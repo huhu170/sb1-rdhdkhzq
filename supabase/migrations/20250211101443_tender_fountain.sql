@@ -1,0 +1,43 @@
+-- Insert more showcase products
+INSERT INTO showcase_products (name, description, price, image_url, is_active, "order")
+VALUES
+  (
+    '星钻季抛系列',
+    '闪耀钻石般的光彩，打造迷人眼神',
+    299.00,
+    'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&q=80',
+    true,
+    3
+  ),
+  (
+    '水光日抛系列',
+    '高保湿配方，让双眼水润闪亮',
+    159.00,
+    'https://images.unsplash.com/photo-1588516903720-8ceb67f9ef84?auto=format&fit=crop&q=80',
+    true,
+    4
+  ),
+  (
+    '暖棕双周抛系列',
+    '温暖自然的棕色调，打造温柔眼神',
+    199.00,
+    'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80',
+    true,
+    5
+  ),
+  (
+    '蜜桃粉月抛系列',
+    '甜美粉嫩的色彩，展现少女气质',
+    259.00,
+    'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&q=80',
+    true,
+    6
+  ),
+  (
+    '冰川灰年抛系列',
+    '通透灰色调，塑造知性优雅',
+    399.00,
+    'https://images.unsplash.com/photo-1583001931096-959e9a1a6223?auto=format&fit=crop&q=80',
+    true,
+    7
+  );

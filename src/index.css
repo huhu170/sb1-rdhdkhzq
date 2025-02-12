@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Primary Colors - Professional Medical Theme */
+    --color-primary: #2563eb; /* 专业蓝色 */
+    --color-primary-light: #60a5fa;
+    --color-primary-dark: #1e40af;
+    
+    /* Secondary Colors */
+    --color-secondary: #818cf8; /* 柔和紫色 */
+    --color-secondary-light: #a5b4fc;
+    --color-secondary-dark: #4f46e5;
+  }
+
+  body {
+    @apply bg-white text-neutral-800 antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-sans tracking-tight;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-6 py-3 rounded-lg 
+           transition duration-200 ease-in-out transform hover:scale-[1.02];
+  }
+
+  .card {
+    @apply bg-white rounded-xl shadow-lg overflow-hidden transition duration-300 hover:shadow-xl;
+  }
+
+  .img-container {
+    @apply relative overflow-hidden rounded-lg;
+  }
+
+  .img-container img {
+    @apply object-cover w-full h-full transition duration-500 ease-in-out transform hover:scale-105;
+  }
+}
