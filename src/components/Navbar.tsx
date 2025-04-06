@@ -33,29 +33,31 @@ export default function Navbar() {
   const [cartItemCount, setCartItemCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isScrolled, setIsScrolled] = useState(false);
-  const { session } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const { session, loading } = useAuth();
   const navigate = useNavigate();
 
-  const defaultNavItems = [
-    { id: 'home', label: '首页', href: '/' },
-    { id: 'customize', label: '定制镜片', href: '/customize' },
-    { id: 'gallery', label: '效果展示', href: '/#gallery' },
-    { id: 'blog', label: 'SIJOER女孩', href: '/#blog' }
-  ];
+  const defaultNavItems: NavItem[] = [];
 
   useEffect(() => {
     fetchSettings();
-    if (session) {
-      fetchCartItemCount();
-    }
-
+    
     // Add scroll listener
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 0);
     };
     window.addEventListener('scroll', handleScroll);
+    
+    // Set loading state based on auth loading
+    setIsLoading(loading);
+    
+    // Fetch cart items only when auth is loaded and user is logged in
+    if (!loading && session) {
+      fetchCartItemCount();
+    }
+    
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [session]);
+  }, [session, loading]);
 
   const fetchSettings = async () => {
     try {
@@ -147,7 +149,8 @@ export default function Navbar() {
           
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8" style={navStyle}>
-            {(settings?.nav_items || defaultNavItems).map((item) => (
+            {/* 只在加载完成且不是初始刷新时显示导航菜单 */}
+            {!isLoading && session && (settings?.nav_items || defaultNavItems).map((item) => (
               <div
                 key={item.id}
                 className="relative group"
@@ -185,7 +188,7 @@ export default function Navbar() {
 
             {/* User Menu */}
             <div className="flex items-center space-x-4">
-              {session ? (
+              {!isLoading && session ? (
                 <>
                   <Link
                     to="/cart"
@@ -246,25 +249,39 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Mobile Navigation Button */}
-          <button
-            className={`md:hidden p-2 rounded-md transition ${
-              isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/80'
-            }`}
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-          >
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              {isMenuOpen ? (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              )}
-            </svg>
-          </button>
+          {/* Mobile Navigation Button - 只在登录后显示 */}
+          {!isLoading && session && (
+            <button
+              className={`md:hidden p-2 rounded-md transition ${
+                isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/80'
+              }`}
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+            >
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                {isMenuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
+            </button>
+          )}
+          
+          {/* 当未登录时，在移动设备上显示登录/注册按钮 */}
+          {!isLoading && !session && (
+            <Link
+              to="/auth/login"
+              className={`md:hidden transition ${
+                isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/80'
+              }`}
+            >
+              登录/注册
+            </Link>
+          )}
         </div>
 
         {/* Mobile Navigation Menu */}
-        {isMenuOpen && (
+        {isMenuOpen && !isLoading && session && (
           <div className="md:hidden py-4 bg-white" style={navStyle}>
             <div className="flex flex-col space-y-4">
               {(settings?.nav_items || defaultNavItems).map((item) => (
@@ -294,55 +311,43 @@ export default function Navbar() {
               ))}
               
               {/* Mobile User Menu */}
-              {session ? (
-                <>
-                  <Link
-                    to="/cart"
-                    className="flex items-center text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    <ShoppingCart className="w-5 h-5 mr-2" />
-                    购物车
-                    {cartItemCount > 0 && (
-                      <span className="ml-2 bg-indigo-600 text-white text-xs rounded-full px-2 py-1">
-                        {cartItemCount}
-                      </span>
-                    )}
-                  </Link>
-                  <Link
-                    to="/profile"
-                    className="flex items-center text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    <User className="w-5 h-5 mr-2" />
-                    个人中心
-                  </Link>
-                  <Link
-                    to="/orders"
-                    className="block text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    我的订单
-                  </Link>
-                  <button
-                    onClick={async () => {
-                      await handleLogout();
-                      setIsMenuOpen(false);
-                    }}
-                    className="block w-full text-left text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
-                  >
-                    退出登录
-                  </button>
-                </>
-              ) : (
-                <Link
-                  to="/auth/login"
-                  className="block text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  登录/注册
-                </Link>
-              )}
+              <Link
+                to="/cart"
+                className="flex items-center text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <ShoppingCart className="w-5 h-5 mr-2" />
+                购物车
+                {cartItemCount > 0 && (
+                  <span className="ml-2 bg-indigo-600 text-white text-xs rounded-full px-2 py-1">
+                    {cartItemCount}
+                  </span>
+                )}
+              </Link>
+              <Link
+                to="/profile"
+                className="flex items-center text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <User className="w-5 h-5 mr-2" />
+                个人中心
+              </Link>
+              <Link
+                to="/orders"
+                className="block text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                我的订单
+              </Link>
+              <button
+                onClick={async () => {
+                  await handleLogout();
+                  setIsMenuOpen(false);
+                }}
+                className="block w-full text-left text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
+              >
+                退出登录
+              </button>
             </div>
           </div>
         )}

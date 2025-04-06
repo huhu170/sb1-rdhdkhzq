@@ -42,3 +42,18 @@
     @apply object-cover w-full h-full transition duration-500 ease-in-out transform hover:scale-105;
   }
 }
+
+/* 进度条自定义样式 */
+#nprogress .bar {
+  background: #4f46e5 !important; /* 使用主题色（indigo-600） */
+  height: 3px !important;
+}
+
+#nprogress .peg {
+  box-shadow: 0 0 10px #4f46e5, 0 0 5px #4f46e5 !important;
+}
+
+#nprogress .spinner-icon {
+  border-top-color: #4f46e5 !important;
+  border-left-color: #4f46e5 !important;
+}

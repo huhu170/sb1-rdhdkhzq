@@ -3,8 +3,15 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables. Please click the "Connect to Supabase" button in the top right to set up Supabase.');
+// 添加更明确的错误信息以便调试
+if (!supabaseUrl) {
+  console.error('缺少 Supabase URL 环境变量。实际值:', supabaseUrl);
+  throw new Error('缺少 Supabase URL 环境变量。请确保您的.env文件中有VITE_SUPABASE_URL。');
+}
+
+if (!supabaseAnonKey) {
+  console.error('缺少 Supabase Anon Key 环境变量。实际值:', supabaseAnonKey);
+  throw new Error('缺少 Supabase Anon Key 环境变量。请确保您的.env文件中有VITE_SUPABASE_ANON_KEY。');
 }
 
 // Create Supabase client with enhanced configuration

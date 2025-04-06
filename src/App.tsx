@@ -16,6 +16,7 @@ import Profile from './pages/profile/Profile';
 import Orders from './pages/profile/Orders';
 import Customize from './pages/customize/Customize';
 import ProductList from './pages/products/ProductList';
+import ProgressBar from './components/ProgressBar';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -39,6 +40,8 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 function App() {
   return (
     <Router>
+      {/* 进度条组件 */}
+      <ProgressBar />
       <Routes>
         {/* Admin Routes */}
         <Route path="/admin">
