@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useAuth } from './hooks/useAuth';
+import { useAuth, AuthProvider } from './contexts/AuthContext';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import CustomizationTool from './components/CustomizationTool';
@@ -23,6 +23,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { session, loading } = useAuth();
 
   if (loading) {
+    // 在加载过程中，显示全屏加载状态，避免跳转到登录页
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
@@ -30,14 +31,15 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     );
   }
 
+  // 仅在完全确认未登录时才重定向
   if (!session) {
-    return <Navigate to="/auth/login" replace />;
+    return <Navigate to="/auth/login" state={{ from: window.location.pathname }} replace />;
   }
 
   return <>{children}</>;
 };
 
-function App() {
+function AppRoutes() {
   return (
     <Router>
       {/* 进度条组件 */}
@@ -147,6 +149,15 @@ function App() {
         } />
       </Routes>
     </Router>
+  );
+}
+
+// 主App组件使用AuthProvider包装整个应用
+function App() {
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
   );
 }
 

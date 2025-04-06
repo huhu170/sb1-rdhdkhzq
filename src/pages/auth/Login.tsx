@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, AlertCircle } from 'lucide-react';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../../contexts/AuthContext';
 import { handleAuthError } from '../../lib/supabase';
 
 export default function Login() {
@@ -13,26 +13,38 @@ export default function Login() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [attempts, setAttempts] = useState(0);
+  const [redirecting, setRedirecting] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading: authLoading } = useAuth();
 
   // Handle automatic redirects based on authentication state
   useEffect(() => {
-    if (isAuthenticated) {
+    // 只在未处于加载状态、未正在重定向且已认证的情况下进行重定向
+    if (isAuthenticated && !authLoading && !redirecting) {
+      // 防止重复重定向
+      setRedirecting(true);
+      
+      // 使用location.state获取原始请求的页面路径
       const state = location.state as { from?: string };
       const isAdminLogin = location.pathname === '/admin/login';
 
       if (isAdminLogin) {
-        // For admin login, verify role first
+        // 管理员登录页处理
         verifyAdminRole();
       } else {
-        // For regular users, redirect to intended page or home
+        // 普通用户登录处理
         const redirectTo = state?.from || '/';
-        navigate(redirectTo, { replace: true });
+        console.log('Redirecting authenticated user to:', redirectTo);
+        
+        // 使用replace而不是push避免历史记录堆积
+        // 添加一个简短的延迟，确保DOM完全更新
+        setTimeout(() => {
+          navigate(redirectTo, { replace: true });
+        }, 10);
       }
     }
-  }, [isAuthenticated, location.pathname, navigate]);
+  }, [isAuthenticated, authLoading, redirecting, location.pathname, navigate, location.state]);
 
   // Handle messages and errors from navigation state
   useEffect(() => {

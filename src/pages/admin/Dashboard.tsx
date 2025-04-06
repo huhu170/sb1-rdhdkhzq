@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNavigate, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { PlusCircle, Image, FileText, LogOut, Upload, X, Layout, LayoutDashboard, Images, FileEdit, Eye, Plus, Trash2, Settings, Users } from 'lucide-react';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../../contexts/AuthContext';
 import UserList from './users/UserList';
 import BannerList from './banners/BannerList';
 import ProductList from './products/ProductList';

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase, handleSupabaseError, retryOperation } from '../../lib/supabase';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { User, Package, MapPin, LogOut } from 'lucide-react';
 
@@ -48,10 +48,32 @@ export default function Profile() {
           .from('user_profiles')
           .select('*')
           .eq('id', user?.id)
-          .single();
+          .maybeSingle();
       });
 
       if (profileError) throw profileError;
+
+      // 如果用户资料不存在，则创建一个新的资料
+      if (!profileData) {
+        console.log('用户资料不存在，正在创建新资料...');
+        const { data: newProfile, error: createError } = await supabase
+          .from('user_profiles')
+          .insert({
+            id: user?.id,
+            display_name: user?.email?.split('@')[0] || '用户',
+            phone: '',
+            avatar_url: null,
+            status: 'active',
+            last_login_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+        
+        if (createError) throw createError;
+        setProfile(newProfile);
+      } else {
+        setProfile(profileData);
+      }
 
       // Fetch recent orders
       const { data: orderData, error: orderError } = await retryOperation(async () => {
@@ -65,7 +87,6 @@ export default function Profile() {
 
       if (orderError) throw orderError;
 
-      setProfile(profileData);
       setRecentOrders(orderData || []);
     } catch (err: any) {
       const handledError = handleSupabaseError(err, 'fetching user data');

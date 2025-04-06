@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Eye, ChevronDown, ShoppingCart, User } from 'lucide-react';
 import { supabase, handleSupabaseError, retryOperation } from '../lib/supabase';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../contexts/AuthContext';
 
 interface SubNavItem {
   id: string;
@@ -127,7 +127,7 @@ export default function Navbar() {
 
   return (
     <nav className={`fixed w-full z-50 transition-all duration-300 ${
-      isScrolled ? 'bg-white/80 backdrop-blur-md shadow-sm' : 'bg-transparent'
+      isScrolled ? 'bg-white/95 backdrop-blur-md shadow-sm' : 'bg-black/30 backdrop-blur-sm'
     }`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
@@ -136,12 +136,12 @@ export default function Navbar() {
               {settings?.logo_url ? (
                 <img src={settings.logo_url} alt="SIJOER" className="h-8 w-auto mr-2" />
               ) : (
-                <Eye className={`h-8 w-8 ${isScrolled ? 'text-indigo-600' : 'text-white'}`} />
+                <Eye className={`h-8 w-8 ${isScrolled ? 'text-indigo-600' : 'text-white drop-shadow-md'}`} />
               )}
-              <span className={`text-xl font-bold ${isScrolled ? 'text-gray-900' : 'text-white'}`}>
+              <span className={`text-xl font-bold ${isScrolled ? 'text-gray-900' : 'text-white drop-shadow-md'}`}>
                 SIJOER
               </span>
-              <span className={`text-xl ml-1 ${isScrolled ? 'text-gray-600' : 'text-white/80'}`}>
+              <span className={`text-xl ml-1 ${isScrolled ? 'text-gray-600' : 'text-white drop-shadow-md'}`}>
                 希乔尔
               </span>
             </Link>
@@ -149,8 +149,11 @@ export default function Navbar() {
           
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8" style={navStyle}>
-            {/* 只在加载完成且不是初始刷新时显示导航菜单 */}
-            {!isLoading && session && (settings?.nav_items || defaultNavItems).map((item) => (
+            {/* 只在已加载且登录后才显示导航菜单 */}
+            {isLoading ? (
+              // 加载状态时显示占位符
+              <div className="w-8 h-6"></div>
+            ) : session && (settings?.nav_items || defaultNavItems).map((item) => (
               <div
                 key={item.id}
                 className="relative group"
@@ -159,8 +162,8 @@ export default function Navbar() {
               >
                 <Link
                   to={item.href}
-                  className={`flex items-center transition ${
-                    isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/80'
+                  className={`flex items-center transition font-medium ${
+                    isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white drop-shadow-md'
                   }`}
                 >
                   {item.label}
@@ -188,12 +191,15 @@ export default function Navbar() {
 
             {/* User Menu */}
             <div className="flex items-center space-x-4">
-              {!isLoading && session ? (
+              {isLoading ? (
+                // 加载中时显示空白占位符
+                <div className="w-6 h-6"></div>
+              ) : session ? (
                 <>
                   <Link
                     to="/cart"
                     className={`relative transition ${
-                      isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/80'
+                      isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/90 drop-shadow-md'
                     }`}
                   >
                     <ShoppingCart className="w-6 h-6" />
@@ -206,7 +212,7 @@ export default function Navbar() {
                   <div className="relative group">
                     <button
                       className={`flex items-center transition ${
-                        isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/80'
+                        isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/90 drop-shadow-md'
                       }`}
                       onClick={() => setHoveredItem(hoveredItem === 'user' ? null : 'user')}
                     >
@@ -239,8 +245,8 @@ export default function Navbar() {
               ) : (
                 <Link
                   to="/auth/login"
-                  className={`transition ${
-                    isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/80'
+                  className={`transition font-medium ${
+                    isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/90 drop-shadow-md'
                   }`}
                 >
                   登录/注册
@@ -250,10 +256,13 @@ export default function Navbar() {
           </div>
 
           {/* Mobile Navigation Button - 只在登录后显示 */}
-          {!isLoading && session && (
+          {isLoading ? (
+            // 加载中时显示空白占位符
+            <div className="md:hidden w-6 h-6"></div>
+          ) : session ? (
             <button
               className={`md:hidden p-2 rounded-md transition ${
-                isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/80'
+                isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/90 drop-shadow-md'
               }`}
               onClick={() => setIsMenuOpen(!isMenuOpen)}
             >
@@ -265,14 +274,11 @@ export default function Navbar() {
                 )}
               </svg>
             </button>
-          )}
-          
-          {/* 当未登录时，在移动设备上显示登录/注册按钮 */}
-          {!isLoading && !session && (
+          ) : (
             <Link
               to="/auth/login"
-              className={`md:hidden transition ${
-                isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/80'
+              className={`md:hidden transition font-medium ${
+                isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/90 drop-shadow-md'
               }`}
             >
               登录/注册
@@ -281,7 +287,7 @@ export default function Navbar() {
         </div>
 
         {/* Mobile Navigation Menu */}
-        {isMenuOpen && !isLoading && session && (
+        {isMenuOpen && session && (
           <div className="md:hidden py-4 bg-white" style={navStyle}>
             <div className="flex flex-col space-y-4">
               {(settings?.nav_items || defaultNavItems).map((item) => (

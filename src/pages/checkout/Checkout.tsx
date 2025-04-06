@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase, handleSupabaseError, retryOperation } from '../../lib/supabase';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../../contexts/AuthContext';
 import { AlertCircle, CreditCard, MapPin, Plus, Trash2, WalletCards } from 'lucide-react';
 
 interface CartItem {

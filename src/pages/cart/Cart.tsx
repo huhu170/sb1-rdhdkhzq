@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase, handleSupabaseError, retryOperation } from '../../lib/supabase';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Minus, Plus, Trash2, ShoppingBag, RefreshCw } from 'lucide-react';
 

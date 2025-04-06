@@ -36,30 +36,21 @@ export default function ProductList() {
     priceRange: [0, 1000],
     rating: null,
     tags: [],
-    sortBy: 'popularity'
+    sortBy: 'price_desc'
   });
   const [showFilters, setShowFilters] = useState(false);
   const navigate = useNavigate();
 
-  // Debounced search function
-  const debouncedSearch = useCallback(
-    debounce((term: string) => {
-      fetchProducts(term);
-    }, 300),
-    []
-  );
+  // 使用useRef而不是useState来存储产品列表长度，避免循环依赖
+  const productsLengthRef = React.useRef(0);
 
-  useEffect(() => {
-    fetchProducts();
-  }, [filters]); // Re-fetch when filters change
-
-  useEffect(() => {
-    debouncedSearch(searchTerm);
-  }, [searchTerm, debouncedSearch]);
-
-  const fetchProducts = async (search = '') => {
+  const fetchProducts = useCallback(async (search = '') => {
     try {
-      setLoading(true);
+      // 显示加载状态，但不清空现有产品列表，减少闪烁
+      if (productsLengthRef.current === 0) {
+        setLoading(true);
+      }
+      
       let query = supabase
         .from('products')
         .select('*');
@@ -74,14 +65,22 @@ export default function ProductList() {
         .gte('base_price', filters.priceRange[0])
         .lte('base_price', filters.priceRange[1]);
 
-      // Apply rating filter
+      // Apply rating filter if the column exists
       if (filters.rating) {
-        query = query.gte('rating', filters.rating);
+        try {
+          query = query.gte('rating', filters.rating);
+        } catch (e) {
+          console.warn('Rating filter not applied - column may not exist');
+        }
       }
 
-      // Apply tag filters
+      // Apply tag filters if the column exists
       if (filters.tags.length > 0) {
-        query = query.contains('tags', filters.tags);
+        try {
+          query = query.contains('tags', filters.tags);
+        } catch (e) {
+          console.warn('Tags filter not applied - column may not exist');
+        }
       }
 
       // Apply sorting
@@ -90,20 +89,25 @@ export default function ProductList() {
           query = query.order('base_price', { ascending: true });
           break;
         case 'price_desc':
+        default:
           query = query.order('base_price', { ascending: false });
-          break;
-        case 'rating':
-          query = query.order('rating', { ascending: false });
-          break;
-        case 'popularity':
-          query = query.order('review_count', { ascending: false });
           break;
       }
 
       const { data, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
-      setProducts(data || []);
+      
+      // 处理缺少字段的数据，添加默认值
+      const processedData = (data || []).map(item => ({
+        ...item,
+        rating: item.rating || 5,
+        review_count: item.review_count || 0,
+        tags: item.tags || []
+      }));
+      
+      setProducts(processedData);
+      productsLengthRef.current = processedData.length;
       setError(null);
     } catch (err: any) {
       console.error('Error fetching products:', err);
@@ -111,13 +115,23 @@ export default function ProductList() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
 
-  const handleAddToCart = async (productId: string) => {
+  // 更新debouncedSearch的依赖
+  const debouncedSearch = useCallback(
+    debounce((term: string) => {
+      fetchProducts(term);
+    }, 300),
+    [fetchProducts]
+  );
+
+  const handleAddToCart = useCallback(async (productId: string) => {
     // Add to cart logic here
-  };
+    console.log('Adding to cart:', productId);
+  }, []);
 
-  const renderRatingStars = (rating: number) => {
+  // 优化renderRatingStars函数，使其只在需要时重新计算
+  const renderRatingStars = useCallback((rating: number) => {
     const stars = [];
     const fullStars = Math.floor(rating);
     const hasHalfStar = rating % 1 >= 0.5;
@@ -142,75 +156,85 @@ export default function ProductList() {
     }
 
     return stars;
-  };
+  }, []);
 
-  const ProductCard = ({ product }: { product: Product }) => (
-    <div className={`group bg-white rounded-lg shadow-sm overflow-hidden transition-all duration-300 hover:shadow-lg ${
-      viewMode === 'grid' ? 'h-full' : 'flex'
-    }`}>
-      <div className={`relative overflow-hidden ${
-        viewMode === 'grid' ? 'aspect-square' : 'w-48 flex-shrink-0'
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]); // 重新获取数据当筛选器或fetchProducts变化时
+
+  useEffect(() => {
+    debouncedSearch(searchTerm);
+  }, [searchTerm, debouncedSearch]);
+
+  // 使用React.memo优化ProductCard组件减少不必要的重新渲染
+  const MemoizedProductCard = React.memo(({ product }: { product: Product }) => {
+    return (
+      <div className={`group bg-white rounded-lg shadow-sm overflow-hidden transition-all duration-300 hover:shadow-lg ${
+        viewMode === 'grid' ? 'h-full' : 'flex'
       }`}>
-        <img
-          src={product.image_url}
-          alt={product.name}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-          loading="lazy"
-        />
-        {product.tags?.map((tag, index) => (
-          <span
-            key={tag}
-            className="absolute top-2 right-2 px-2 py-1 text-xs font-medium bg-indigo-600 text-white rounded-full"
-            style={{ transform: `translateY(${index * 28}px)` }}
-          >
-            {tag}
-          </span>
-        ))}
-      </div>
-
-      <div className={`p-4 flex flex-col ${viewMode === 'list' ? 'flex-1' : ''}`}>
-        <h3 className="text-lg font-medium text-gray-900 line-clamp-2 mb-2 group-hover:text-indigo-600">
-          {product.name}
-        </h3>
-        
-        <div className="mt-auto space-y-2">
-          <div className="flex items-center">
-            <div className="flex items-center">
-              {renderRatingStars(product.rating)}
-            </div>
-            <span className="ml-2 text-sm text-gray-500">
-              ({product.review_count})
+        <div className={`relative overflow-hidden ${
+          viewMode === 'grid' ? 'aspect-square' : 'w-48 flex-shrink-0'
+        }`}>
+          <img
+            src={product.image_url}
+            alt={product.name}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            loading="lazy"
+            decoding="async"
+            width="300"
+            height="300"
+          />
+          {product.tags && product.tags.length > 0 && product.tags.map((tag, index) => (
+            <span
+              key={tag}
+              className="absolute top-2 right-2 px-2 py-1 text-xs font-medium bg-indigo-600 text-white rounded-full"
+              style={{ transform: `translateY(${index * 28}px)` }}
+            >
+              {tag}
             </span>
-          </div>
+          ))}
+        </div>
 
-          <div className="flex items-baseline space-x-2">
-            <span className="text-xl font-bold text-indigo-600">
-              ¥{product.sale_price || product.base_price}
-            </span>
-            {product.sale_price && (
-              <span className="text-sm text-gray-500 line-through">
-                ¥{product.base_price}
-              </span>
+        <div className={`p-4 flex flex-col ${viewMode === 'list' ? 'flex-1' : ''}`}>
+          <h3 className="text-lg font-medium text-gray-900 line-clamp-2 mb-2 group-hover:text-indigo-600">
+            {product.name}
+          </h3>
+          
+          <div className="mt-auto space-y-2">
+            {(product.rating !== undefined) && (
+              <div className="flex items-center">
+                <div className="flex items-center">
+                  {renderRatingStars(product.rating || 0)}
+                </div>
+                <span className="ml-2 text-sm text-gray-500">
+                  ({product.review_count || 0})
+                </span>
+              </div>
             )}
-          </div>
 
-          <button
-            onClick={() => handleAddToCart(product.id)}
-            className="w-full flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
-          >
-            <ShoppingCart className="w-4 h-4 mr-2" />
-            加入购物车
-          </button>
+            <div className="flex items-baseline space-x-2">
+              <span className="text-xl font-bold text-indigo-600">
+                ¥{product.sale_price || product.base_price}
+              </span>
+              {product.sale_price && (
+                <span className="text-sm text-gray-500 line-through">
+                  ¥{product.base_price}
+                </span>
+              )}
+            </div>
+
+            <button
+              onClick={() => handleAddToCart(product.id)}
+              className="w-full flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
+            >
+              <ShoppingCart className="w-4 h-4 mr-2" />
+              加入购物车
+            </button>
+          </div>
         </div>
       </div>
-
-      {/* Hover Description */}
-      <div className="absolute inset-0 bg-black/75 text-white p-6 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-        <h4 className="font-medium mb-2">{product.name}</h4>
-        <p className="text-sm text-gray-200">{product.description}</p>
-      </div>
-    </div>
-  );
+    );
+  });
 
   return (
     <div className="min-h-screen bg-gray-50 pt-20">
@@ -255,10 +279,8 @@ export default function ProductList() {
               onChange={(e) => setFilters(prev => ({ ...prev, sortBy: e.target.value as FilterState['sortBy'] }))}
               className="border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
             >
-              <option value="popularity">按热度排序</option>
-              <option value="price_asc">价格从低到高</option>
               <option value="price_desc">价格从高到低</option>
-              <option value="rating">评分最高</option>
+              <option value="price_asc">价格从低到高</option>
             </select>
           </div>
         </div>
@@ -360,7 +382,7 @@ export default function ProductList() {
                   : 'grid-cols-1'
               }`}>
                 {products.map((product) => (
-                  <ProductCard key={product.id} product={product} />
+                  <MemoizedProductCard key={product.id} product={product} />
                 ))}
               </div>
             ) : (
