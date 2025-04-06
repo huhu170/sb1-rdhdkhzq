@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, handleSupabaseError, retryOperation } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import { AlertCircle, CreditCard, MapPin, Plus, Trash2, WalletCards } from 'lucide-react';
+import { AlertCircle, MapPin, Plus, Trash2 } from 'lucide-react';
+import AddressForm from './AddressForm';
 
 interface CartItem {
   id: string;
@@ -28,39 +29,10 @@ interface Address {
   is_default: boolean;
 }
 
-interface PaymentMethod {
-  id: string;
-  type: 'alipay' | 'wechat' | 'card';
-  label: string;
-  icon: React.ReactNode;
-}
-
-const PAYMENT_METHODS: PaymentMethod[] = [
-  {
-    id: 'alipay',
-    type: 'alipay',
-    label: '支付宝',
-    icon: <WalletCards className="w-6 h-6 text-blue-500" />
-  },
-  {
-    id: 'wechat',
-    type: 'wechat',
-    label: '微信支付',
-    icon: <WalletCards className="w-6 h-6 text-green-500" />
-  },
-  {
-    id: 'card',
-    type: 'card',
-    label: '银行卡',
-    icon: <CreditCard className="w-6 h-6 text-gray-500" />
-  }
-];
-
 export default function Checkout() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<Address | null>(null);
-  const [selectedPayment, setSelectedPayment] = useState<string>('alipay');
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -75,22 +47,32 @@ export default function Checkout() {
   const { isAuthenticated, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    const cartItems = location.state?.items;
-    if (!cartItems || cartItems.length === 0) {
+    const cartItems = location.state?.items || [];
+    
+    // 如果没有购物车商品且不是从地址编辑页面来，则返回购物车页面
+    if ((!cartItems || cartItems.length === 0) && !searchParams.get('showAddressForm')) {
       navigate('/cart');
       return;
     }
 
-    setItems(cartItems);
-    calculateOrderSummary(cartItems);
+    if (cartItems && cartItems.length > 0) {
+      setItems(cartItems);
+      calculateOrderSummary(cartItems);
+    }
 
     // Only fetch addresses if user is authenticated
     if (isAuthenticated) {
       fetchAddresses();
     }
-  }, [isAuthenticated, location.state]);
+
+    // 检查URL参数中是否有showAddressForm标记
+    if (searchParams.get('showAddressForm') === 'true') {
+      setShowAddressForm(true);
+    }
+  }, [isAuthenticated, location.state, searchParams, navigate]);
 
   const fetchAddresses = async () => {
     if (!user?.id) return;
@@ -147,7 +129,8 @@ export default function Checkout() {
       navigate('/auth/login', { 
         state: { 
           from: '/checkout',
-          items: items // Pass cart items through navigation state
+          items: items, // Pass cart items through navigation state
+          fromCart: location.state?.fromCart || false
         }
       });
       return;
@@ -157,6 +140,11 @@ export default function Checkout() {
       setSubmitting(true);
       setError(null);
 
+      // 先检查是否有订单商品
+      if (!items || items.length === 0) {
+        throw new Error('订单中没有商品，请返回购物车重试');
+      }
+      
       // Create order with retry
       const { data: order, error: orderError } = await retryOperation(async () => {
         return await supabase
@@ -200,7 +188,7 @@ export default function Checkout() {
             .insert({
               order_id: order.id,
               amount: orderSummary.total,
-              payment_method: selectedPayment,
+              payment_method: 'alipay', // 默认使用支付宝
               status: 'pending'
             });
         });
@@ -227,6 +215,25 @@ export default function Checkout() {
       setError(handledError.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // 处理地址表单关闭
+  const handleAddressFormClose = () => {
+    setShowAddressForm(false);
+    // 如果URL中有showAddressForm参数，则移除它
+    if (searchParams.get('showAddressForm')) {
+      navigate(location.pathname, { replace: true });
+    }
+  };
+
+  // 更新地址表单成功回调
+  const handleAddressSuccess = () => {
+    setShowAddressForm(false);
+    fetchAddresses();
+    // 如果URL中有showAddressForm参数，则移除它
+    if (searchParams.get('showAddressForm')) {
+      navigate(location.pathname, { replace: true });
     }
   };
 
@@ -355,7 +362,7 @@ export default function Checkout() {
                               <div className="mt-1 text-sm text-gray-500">
                                 {Object.entries(item.customization).map(([key, value]) => (
                                   <div key={key}>
-                                    {key}: {value}
+                                    {key}: {typeof value === 'string' || typeof value === 'number' ? value : JSON.stringify(value)}
                                   </div>
                                 ))}
                               </div>
@@ -374,31 +381,6 @@ export default function Checkout() {
                     </div>
                   ))}
                 </div>
-              </div>
-            </div>
-
-            {/* Payment Method Section */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-medium text-gray-900 mb-4">支付方式</h2>
-              <div className="grid grid-cols-3 gap-4">
-                {PAYMENT_METHODS.map((method) => (
-                  <div
-                    key={method.id}
-                    className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                      selectedPayment === method.id
-                        ? 'border-indigo-600 bg-indigo-50'
-                        : 'border-gray-200 hover:border-indigo-300'
-                    }`}
-                    onClick={() => setSelectedPayment(method.id)}
-                  >
-                    <div className="flex items-center justify-center">
-                      {method.icon}
-                      <span className="ml-2 font-medium text-gray-900">
-                        {method.label}
-                      </span>
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
           </div>
@@ -437,7 +419,7 @@ export default function Checkout() {
 
                 <button
                   onClick={handleSubmitOrder}
-                  disabled={submitting || !selectedAddress}
+                  disabled={submitting || !selectedAddress || items.length === 0}
                   className="w-full mt-6 bg-indigo-600 text-white py-3 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                 >
                   {submitting ? '提交中...' : '提交订单'}
@@ -453,6 +435,14 @@ export default function Checkout() {
             </div>
           </div>
         </div>
+
+        {/* 修改地址表单组件的使用 */}
+        {showAddressForm && (
+          <AddressForm
+            onClose={handleAddressFormClose}
+            onSuccess={handleAddressSuccess}
+          />
+        )}
       </div>
     </div>
   );

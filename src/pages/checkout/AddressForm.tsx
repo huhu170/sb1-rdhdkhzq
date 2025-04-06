@@ -1,6 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { X } from 'lucide-react';
+
+// 中国省份数据
+const CHINA_PROVINCES = [
+  '北京市', '天津市', '河北省', '山西省', '内蒙古自治区', '辽宁省', '吉林省', 
+  '黑龙江省', '上海市', '江苏省', '浙江省', '安徽省', '福建省', '江西省', 
+  '山东省', '河南省', '湖北省', '湖南省', '广东省', '广西壮族自治区', 
+  '海南省', '重庆市', '四川省', '贵州省', '云南省', '西藏自治区', '陕西省', 
+  '甘肃省', '青海省', '宁夏回族自治区', '新疆维吾尔自治区', '台湾省', 
+  '香港特别行政区', '澳门特别行政区'
+];
+
+// 简化的城市数据结构，实际项目中可能需要更完整的数据
+const CITY_MAP: {[key: string]: string[]} = {
+  '北京市': ['东城区', '西城区', '朝阳区', '丰台区', '石景山区', '海淀区', '顺义区', '通州区', '大兴区', '房山区', '门头沟区', '昌平区', '平谷区', '密云区', '延庆区'],
+  '上海市': ['黄浦区', '徐汇区', '长宁区', '静安区', '普陀区', '虹口区', '杨浦区', '浦东新区', '闵行区', '宝山区', '嘉定区', '金山区', '松江区', '青浦区', '奉贤区', '崇明区'],
+  '广东省': ['广州市', '深圳市', '珠海市', '汕头市', '佛山市', '韶关市', '湛江市', '肇庆市', '江门市', '茂名市', '惠州市', '梅州市', '汕尾市', '河源市', '阳江市', '清远市', '东莞市', '中山市', '潮州市', '揭阳市', '云浮市'],
+  // ... 其他省份的城市数据
+};
+
+// 为所有省份提供至少一个默认值
+Object.keys(CHINA_PROVINCES).forEach(province => {
+  if (!CITY_MAP[province]) {
+    CITY_MAP[province] = ['市辖区'];
+  }
+});
 
 interface AddressFormProps {
   address?: {
@@ -31,6 +56,31 @@ export default function AddressForm({ address, onClose, onSuccess }: AddressForm
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cities, setCities] = useState<string[]>([]);
+  const [districts, setDistricts] = useState<string[]>(['请先选择城市']);
+
+  // 当省份变化时更新城市列表
+  useEffect(() => {
+    if (formData.province) {
+      setCities(CITY_MAP[formData.province] || []);
+      if (!CITY_MAP[formData.province]?.includes(formData.city)) {
+        setFormData(prev => ({...prev, city: '', district: ''}));
+      }
+    } else {
+      setCities([]);
+      setFormData(prev => ({...prev, city: '', district: ''}));
+    }
+  }, [formData.province]);
+
+  // 当城市变化时重置区县
+  useEffect(() => {
+    if (formData.city) {
+      // 这里使用简单的区县数据，实际项目中可能需要更完整的数据
+      setDistricts(['城区', '郊区', '新区', '开发区']);
+    } else {
+      setDistricts(['请先选择城市']);
+    }
+  }, [formData.city]);
 
   const validateForm = () => {
     if (!formData.recipient_name.trim()) {
@@ -58,9 +108,12 @@ export default function AddressForm({ address, onClose, onSuccess }: AddressForm
       throw new Error('请输入详细地址');
     }
 
-    const postalRegex = /^\d{6}$/;
-    if (!postalRegex.test(formData.postal_code)) {
-      throw new Error('请输入正确的邮政编码');
+    // 邮政编码验证改为可选项
+    if (formData.postal_code && formData.postal_code.trim() !== '') {
+      const postalRegex = /^\d{6}$/;
+      if (!postalRegex.test(formData.postal_code)) {
+        throw new Error('如需填写邮政编码，请输入正确的6位数字');
+      }
     }
   };
 
@@ -72,7 +125,7 @@ export default function AddressForm({ address, onClose, onSuccess }: AddressForm
     try {
       validateForm();
 
-      const { user } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('请先登录');
 
       const data = {
@@ -155,36 +208,56 @@ export default function AddressForm({ address, onClose, onSuccess }: AddressForm
               <label className="block text-sm font-medium text-gray-700">
                 省份
               </label>
-              <input
-                type="text"
+              <select
                 value={formData.province}
                 onChange={(e) => setFormData(prev => ({ ...prev, province: e.target.value }))}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-              />
+              >
+                <option value="">请选择省份</option>
+                {CHINA_PROVINCES.map((province) => (
+                  <option key={province} value={province}>
+                    {province}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700">
                 城市
               </label>
-              <input
-                type="text"
+              <select
                 value={formData.city}
                 onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-              />
+                disabled={!formData.province}
+              >
+                <option value="">请选择城市</option>
+                {cities.map((city) => (
+                  <option key={city} value={city}>
+                    {city}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700">
                 区县
               </label>
-              <input
-                type="text"
+              <select
                 value={formData.district}
                 onChange={(e) => setFormData(prev => ({ ...prev, district: e.target.value }))}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-              />
+                disabled={!formData.city}
+              >
+                <option value="">请选择区县</option>
+                {districts.map((district) => (
+                  <option key={district} value={district}>
+                    {district}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -202,13 +275,14 @@ export default function AddressForm({ address, onClose, onSuccess }: AddressForm
 
           <div>
             <label className="block text-sm font-medium text-gray-700">
-              邮政编码
+              邮政编码（选填）
             </label>
             <input
               type="text"
               value={formData.postal_code}
               onChange={(e) => setFormData(prev => ({ ...prev, postal_code: e.target.value }))}
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              placeholder="选填，如填写需要6位数字"
             />
           </div>
 

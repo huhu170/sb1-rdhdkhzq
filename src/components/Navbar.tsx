@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Eye, ChevronDown, ShoppingCart, User } from 'lucide-react';
 import { supabase, handleSupabaseError, retryOperation } from '../lib/supabase';
 import { Link, useNavigate } from 'react-router-dom';
@@ -59,6 +59,26 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [session, loading]);
 
+  useEffect(() => {
+    if (session?.user) {
+      fetchCartItemCount();
+    } else {
+      setCartItemCount(0);
+    }
+
+    // 添加购物车更新事件监听
+    const handleCartUpdated = () => {
+      console.log('购物车已更新，重新获取购物车数量');
+      fetchCartItemCount();
+    };
+
+    window.addEventListener('cart-updated', handleCartUpdated);
+
+    return () => {
+      window.removeEventListener('cart-updated', handleCartUpdated);
+    };
+  }, [session]);
+
   const fetchSettings = async () => {
     try {
       const { data, error } = await retryOperation(async () => {
@@ -77,7 +97,7 @@ export default function Navbar() {
     }
   };
 
-  const fetchCartItemCount = async () => {
+  const fetchCartItemCount = useCallback(async () => {
     if (!session?.user.id) return;
 
     try {
@@ -109,7 +129,7 @@ export default function Navbar() {
       console.error('Error fetching cart items:', handledError);
       // Don't show error to user for cart count
     }
-  };
+  }, [session]);
 
   const handleLogout = async () => {
     try {

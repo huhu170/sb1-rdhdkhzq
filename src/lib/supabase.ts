@@ -22,11 +22,13 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
     flowType: 'pkce',
     storage: window.localStorage,
-    storageKey: 'sijoer-auth-token'
+    storageKey: 'sijoer-auth-token',
+    debug: true // 开启调试模式，查看详细认证日志
   },
   global: {
     headers: {
-      'x-application-name': 'sijoer'
+      'x-application-name': 'sijoer',
+      'x-client-info': 'supabase-js/2.39.6' // 添加客户端版本信息
     }
   },
   db: {
@@ -186,4 +188,21 @@ export const handleAuthError = (error: any) => {
   }
 
   return error.message || '操作失败，请稍后重试';
+};
+
+// 添加会话检查函数，确认认证状态
+export const checkAuth = async () => {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    console.error('Auth session error:', error);
+    return false;
+  }
+  
+  if (!data.session) {
+    console.warn('No active session found');
+    return false;
+  }
+  
+  console.log('Active session found, user ID:', data.session.user.id);
+  return data.session;
 };

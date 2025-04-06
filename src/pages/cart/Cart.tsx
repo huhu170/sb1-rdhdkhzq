@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { supabase, handleSupabaseError, retryOperation } from '../../lib/supabase';
+import { supabase, handleSupabaseError, retryOperation, checkAuth } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Minus, Plus, Trash2, ShoppingBag, RefreshCw } from 'lucide-react';
@@ -23,25 +23,41 @@ export default function Cart() {
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [retrying, setRetrying] = useState(false);
-  const { session, isAuthenticated, loading: authLoading } = useAuth();
+  const { session, isAuthenticated, loading: authLoading, refreshSession } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    // Wait for auth to be checked
-    if (authLoading) return;
+    // 添加额外的认证验证
+    const verifyAuth = async () => {
+      // 首先检查 useAuth 钩子的状态
+      if (authLoading) return;
 
-    // If not authenticated, redirect to login
-    if (!isAuthenticated) {
-      navigate('/auth/login', { 
-        state: { from: location.pathname },
-        replace: true 
-      });
-      return;
-    }
+      if (!isAuthenticated) {
+        navigate('/auth/login', { 
+          state: { from: location.pathname },
+          replace: true 
+        });
+        return;
+      }
 
-    // If authenticated, fetch cart items
-    fetchCartItems();
+      // 然后进行额外检查以确保会话有效
+      const validSession = await checkAuth();
+      if (!validSession) {
+        console.error('有效会话验证失败，重定向到登录页');
+        navigate('/auth/login', { 
+          state: { from: location.pathname, message: '您的会话已过期，请重新登录' },
+          replace: true 
+        });
+        return;
+      }
+
+      // 验证通过，获取购物车数据
+      console.log('认证有效，正在获取购物车数据');
+      fetchCartItems();
+    };
+
+    verifyAuth();
   }, [isAuthenticated, authLoading, location.pathname]);
 
   const fetchCartItems = async (isRetry = false) => {
@@ -51,9 +67,11 @@ export default function Cart() {
       }
       setError(null);
       
+      console.log('Fetching cart items for user:', session?.user.id);
+      
       // Get user's cart with retry
       let cartData;
-      const { data: initialCart } = await retryOperation(async () => {
+      const { data: initialCart, error: cartError } = await retryOperation(async () => {
         return await supabase
           .from('carts')
           .select('id')
@@ -61,45 +79,91 @@ export default function Cart() {
           .maybeSingle();
       });
 
+      console.log('Cart query result:', initialCart, cartError);
       cartData = initialCart;
 
       if (!cartData) {
-        // Create cart if it doesn't exist
+        console.log('Creating new cart for user:', session?.user.id);
         const { data: newCart, error: createError } = await supabase
           .from('carts')
           .insert({ user_id: session?.user.id })
           .select('id')
           .single();
 
-        if (createError) throw createError;
+        if (createError) {
+          console.error('Error creating cart:', createError);
+          throw createError;
+        }
         cartData = newCart;
+        console.log('New cart created:', cartData);
       }
 
       if (cartData) {
-        // Get cart items with product details with retry
-        const { data: items, error } = await retryOperation(async () => {
+        console.log('Fetching cart items for cart_id:', cartData.id);
+        
+        // 第一步：获取购物车项目
+        const { data: cartItemsData, error: itemsError } = await retryOperation(async () => {
           return await supabase
             .from('cart_items')
-            .select(`
-              id,
-              product_id,
-              quantity,
-              customization,
-              product:products (
-                name,
-                base_price,
-                image_url
-              )
-            `)
+            .select('*')
             .eq('cart_id', cartData.id);
         });
 
-        if (error) throw error;
-        setCartItems(items || []);
+        console.log('Cart items raw data:', cartItemsData, itemsError);
+
+        if (itemsError) {
+          console.error('Error fetching cart items:', itemsError);
+          throw itemsError;
+        }
+
+        if (!cartItemsData || cartItemsData.length === 0) {
+          console.log('No cart items found');
+          setCartItems([]);
+          setRetryCount(0);
+          return;
+        }
+
+        // 第二步：获取产品详情
+        const productIds = cartItemsData.map(item => item.product_id);
+        console.log('Fetching products with ids:', productIds);
+        
+        const { data: productsData, error: productsError } = await retryOperation(async () => {
+          return await supabase
+            .from('products')
+            .select('*')
+            .in('id', productIds);
+        });
+
+        console.log('Products data:', productsData, productsError);
+
+        if (productsError) {
+          console.error('Error fetching products:', productsError);
+          throw productsError;
+        }
+
+        // 第三步：合并数据
+        const mergedItems = cartItemsData.map(item => {
+          const product = productsData?.find(p => p.id === item.product_id);
+          return {
+            id: item.id,
+            product_id: item.product_id,
+            quantity: item.quantity,
+            customization: item.customization,
+            product: {
+              name: product?.name || '未知商品',
+              base_price: product?.base_price || 0,
+              image_url: product?.image_url || ''
+            }
+          } as CartItem;
+        });
+
+        console.log('Merged cart items:', mergedItems);
+        setCartItems(mergedItems);
         setRetryCount(0); // Reset retry count on success
       }
     } catch (err: any) {
       const handledError = handleSupabaseError(err, 'fetching cart items');
+      console.error('Error in fetchCartItems:', err, handledError);
       setError(handledError.message);
       
       // Implement exponential backoff for retries
@@ -270,6 +334,59 @@ export default function Cart() {
   return (
     <div className="min-h-screen bg-gray-50 pt-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">我的购物车</h1>
+          <div className="flex space-x-2">
+            <button
+              onClick={() => fetchCartItems()}
+              className="flex items-center px-4 py-2 border border-indigo-600 text-indigo-600 rounded hover:bg-indigo-50"
+            >
+              <RefreshCw className="w-4 h-4 mr-1" />
+              刷新购物车
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  // 刷新认证状态
+                  await refreshSession();
+                  const authState = await checkAuth();
+                  console.log("认证状态:", authState);
+                  
+                  // 查询所有购物车
+                  const { data: carts } = await supabase.from('carts').select('*');
+                  console.log("所有购物车:", carts);
+                  
+                  if (carts && carts.length > 0) {
+                    // 查询第一个购物车的项目
+                    const { data: items } = await supabase
+                      .from('cart_items')
+                      .select('*')
+                      .eq('cart_id', carts[0].id);
+                    console.log("购物车项目:", items);
+                    
+                    if (items && items.length > 0) {
+                      // 查询产品详情
+                      const { data: products } = await supabase
+                        .from('products')
+                        .select('*')
+                        .in('id', items.map(i => i.product_id));
+                      console.log("产品详情:", products);
+                    }
+                  }
+                  
+                  alert('诊断信息已输出到控制台，请按F12查看');
+                } catch (err) {
+                  console.error("诊断错误:", err);
+                  alert('诊断失败，请查看控制台');
+                }
+              }}
+              className="flex items-center px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
+            >
+              数据诊断
+            </button>
+          </div>
+        </div>
+        
         {error && (
           <div className="mb-4 bg-red-50 text-red-500 p-4 rounded-md flex items-center justify-between">
             <div className="flex items-center">

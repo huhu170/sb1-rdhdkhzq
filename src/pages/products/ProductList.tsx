@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
+import { supabase, retryOperation } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import { 
   Search, Grid, List, SlidersHorizontal, Star, StarHalf, 
   ChevronDown, ShoppingCart, ArrowUpDown, TrendingUp, ThumbsUp
@@ -39,6 +40,9 @@ export default function ProductList() {
     sortBy: 'price_desc'
   });
   const [showFilters, setShowFilters] = useState(false);
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
+  
+  const { session, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
   // 使用useRef而不是useState来存储产品列表长度，避免循环依赖
@@ -128,7 +132,119 @@ export default function ProductList() {
   const handleAddToCart = useCallback(async (productId: string) => {
     // Add to cart logic here
     console.log('Adding to cart:', productId);
-  }, []);
+    console.log('User ID:', session?.user.id);
+    
+    // 诊断: 检查当前会话
+    console.log('Current session object:', session);
+    
+    if (!isAuthenticated) {
+      navigate('/auth/login', { state: { from: '/products' } });
+      return;
+    }
+
+    try {
+      setIsAddingToCart(true);
+      
+      // Get or create user's cart
+      let { data: cart } = await retryOperation(async () => {
+        return await supabase
+          .from('carts')
+          .select('id')
+          .eq('user_id', session?.user.id)
+          .maybeSingle();
+      });
+
+      console.log('Cart query result:', cart);
+
+      if (!cart) {
+        console.log('Creating new cart for user:', session?.user.id);
+        const { data: newCart, error: createError } = await supabase
+          .from('carts')
+          .insert({ user_id: session?.user.id })
+          .select('id')
+          .single();
+
+        if (createError) {
+          console.error('Error creating cart:', createError);
+          throw createError;
+        }
+        cart = newCart;
+        console.log('New cart created:', cart);
+      }
+
+      // 检查是否已存在相同商品
+      const { data: existingItems, error: checkError } = await supabase
+        .from('cart_items')
+        .select('id, quantity')
+        .eq('cart_id', cart.id)
+        .eq('product_id', productId)
+        .maybeSingle();
+      
+      console.log('Check existing items result:', existingItems, checkError);
+
+      let itemResult;
+      if (existingItems) {
+        // 更新已有商品数量
+        console.log('Updating existing item quantity from', existingItems.quantity, 'to', existingItems.quantity + 1);
+        const { data: updatedItem, error: updateError } = await supabase
+          .from('cart_items')
+          .update({ quantity: existingItems.quantity + 1 })
+          .eq('id', existingItems.id)
+          .select();
+
+        console.log('Update result:', updatedItem, updateError);
+        if (updateError) {
+          console.error('Error updating cart item:', updateError);
+          throw updateError;
+        }
+        itemResult = updatedItem;
+      } else {
+        // 添加新商品
+        console.log('Adding new item to cart:', {
+          cart_id: cart.id,
+          product_id: productId,
+          quantity: 1
+        });
+        const { data: newItem, error: addError } = await supabase
+          .from('cart_items')
+          .insert({
+            cart_id: cart.id,
+            product_id: productId,
+            quantity: 1
+          })
+          .select();
+
+        console.log('Insert result:', newItem, addError);
+        if (addError) {
+          console.error('Error adding to cart:', addError);
+          throw addError;
+        }
+        itemResult = newItem;
+      }
+      
+      console.log('Final item result:', itemResult);
+
+      // 验证操作是否成功
+      const { data: verification, error: verifyError } = await supabase
+        .from('cart_items')
+        .select('*')
+        .eq('cart_id', cart.id);
+      
+      console.log('Cart verification after operation:', verification, verifyError);
+
+      // 触发自定义事件通知导航栏更新购物车计数
+      window.dispatchEvent(new CustomEvent('cart-updated'));
+
+      // Show success message
+      showToast('已成功添加到购物车');
+      
+    } catch (err: any) {
+      console.error('Error adding to cart:', err);
+      showToast('添加到购物车失败，请稍后重试: ' + err.message, 'error');
+    } finally {
+      setIsAddingToCart(false);
+    }
+  }, [isAuthenticated, session]);
 
   // 优化renderRatingStars函数，使其只在需要时重新计算
   const renderRatingStars = useCallback((rating: number) => {
@@ -235,6 +351,11 @@ export default function ProductList() {
       </div>
     );
   });
+
+  // 简单的提示函数
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    alert(message); // 简单实现，实际可换成更好的UI组件
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 pt-20">

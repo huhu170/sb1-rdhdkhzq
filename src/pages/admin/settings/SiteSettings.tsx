@@ -33,6 +33,23 @@ interface SiteSettings {
     icon: string;
     icon_url?: string;
   }>;
+  payment_config: {
+    alipay: {
+      enabled: boolean;
+      app_id: string;
+      private_key: string;
+      public_key: string;
+      sandbox_mode: boolean;
+    };
+    wechat: {
+      enabled: boolean;
+      app_id: string;
+      mch_id: string;
+      api_key: string;
+      app_secret: string;
+      sandbox_mode: boolean;
+    };
+  };
 }
 
 export default function SiteSettings() {
@@ -55,6 +72,51 @@ export default function SiteSettings() {
         .single();
 
       if (error) throw error;
+      
+      // 确保payment_config存在默认值
+      if (!data.payment_config) {
+        data.payment_config = {
+          alipay: {
+            enabled: false,
+            app_id: '',
+            private_key: '',
+            public_key: '',
+            sandbox_mode: true
+          },
+          wechat: {
+            enabled: false,
+            app_id: '',
+            mch_id: '',
+            api_key: '',
+            app_secret: '',
+            sandbox_mode: true
+          }
+        };
+      } else {
+        // 确保alipay配置存在
+        if (!data.payment_config.alipay) {
+          data.payment_config.alipay = {
+            enabled: false,
+            app_id: '',
+            private_key: '',
+            public_key: '',
+            sandbox_mode: true
+          };
+        }
+        
+        // 确保wechat配置存在
+        if (!data.payment_config.wechat) {
+          data.payment_config.wechat = {
+            enabled: false,
+            app_id: '',
+            mch_id: '',
+            api_key: '',
+            app_secret: '',
+            sandbox_mode: true
+          };
+        }
+      }
+      
       setSettings(data);
     } catch (err: any) {
       console.error('Error fetching settings:', err);
@@ -581,6 +643,271 @@ export default function SiteSettings() {
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
               />
             </div>
+          </div>
+        </div>
+
+        {/* 支付配置部分 */}
+        <div className="bg-white shadow-sm rounded-lg p-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">支付配置</h3>
+
+          {/* 支付宝配置 */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-md font-medium text-gray-800">支付宝</h4>
+              <div className="flex items-center">
+                <span className="mr-2 text-sm text-gray-600">启用</span>
+                <div className="relative inline-block w-10 mr-2 align-middle select-none">
+                  <input 
+                    type="checkbox" 
+                    name="alipay_enabled" 
+                    id="alipay_enabled" 
+                    checked={settings.payment_config?.alipay?.enabled || false}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      payment_config: {
+                        ...settings.payment_config,
+                        alipay: {
+                          ...settings.payment_config?.alipay,
+                          enabled: e.target.checked
+                        }
+                      }
+                    })}
+                    className="checked:bg-indigo-500 outline-none focus:outline-none right-4 checked:right-0 duration-200 ease-in absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"
+                  />
+                  <label htmlFor="alipay_enabled" className="block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">App ID</label>
+                <input
+                  type="text"
+                  value={settings.payment_config?.alipay?.app_id || ''}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    payment_config: {
+                      ...settings.payment_config,
+                      alipay: {
+                        ...settings.payment_config?.alipay,
+                        app_id: e.target.value
+                      }
+                    }
+                  })}
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                  placeholder="支付宝App ID"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">沙箱模式</label>
+                <div className="mt-1">
+                  <input
+                    type="checkbox"
+                    id="alipay_sandbox"
+                    checked={settings.payment_config?.alipay?.sandbox_mode || false}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      payment_config: {
+                        ...settings.payment_config,
+                        alipay: {
+                          ...settings.payment_config?.alipay,
+                          sandbox_mode: e.target.checked
+                        }
+                      }
+                    })}
+                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="alipay_sandbox" className="ml-2 text-sm text-gray-600">
+                    启用沙箱模式（测试环境）
+                  </label>
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">应用私钥</label>
+                <textarea
+                  value={settings.payment_config?.alipay?.private_key || ''}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    payment_config: {
+                      ...settings.payment_config,
+                      alipay: {
+                        ...settings.payment_config?.alipay,
+                        private_key: e.target.value
+                      }
+                    }
+                  })}
+                  rows={3}
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                  placeholder="应用私钥，用于签名"
+                ></textarea>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">支付宝公钥</label>
+                <textarea
+                  value={settings.payment_config?.alipay?.public_key || ''}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    payment_config: {
+                      ...settings.payment_config,
+                      alipay: {
+                        ...settings.payment_config?.alipay,
+                        public_key: e.target.value
+                      }
+                    }
+                  })}
+                  rows={3}
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                  placeholder="支付宝公钥，用于验证签名"
+                ></textarea>
+              </div>
+            </div>
+          </div>
+
+          {/* 微信支付配置 */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-md font-medium text-gray-800">微信支付</h4>
+              <div className="flex items-center">
+                <span className="mr-2 text-sm text-gray-600">启用</span>
+                <div className="relative inline-block w-10 mr-2 align-middle select-none">
+                  <input 
+                    type="checkbox" 
+                    name="wechat_enabled" 
+                    id="wechat_enabled" 
+                    checked={settings.payment_config?.wechat?.enabled || false}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      payment_config: {
+                        ...settings.payment_config,
+                        wechat: {
+                          ...settings.payment_config?.wechat,
+                          enabled: e.target.checked
+                        }
+                      }
+                    })}
+                    className="checked:bg-indigo-500 outline-none focus:outline-none right-4 checked:right-0 duration-200 ease-in absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"
+                  />
+                  <label htmlFor="wechat_enabled" className="block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">App ID</label>
+                <input
+                  type="text"
+                  value={settings.payment_config?.wechat?.app_id || ''}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    payment_config: {
+                      ...settings.payment_config,
+                      wechat: {
+                        ...settings.payment_config?.wechat,
+                        app_id: e.target.value
+                      }
+                    }
+                  })}
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                  placeholder="微信App ID"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">商户号</label>
+                <input
+                  type="text"
+                  value={settings.payment_config?.wechat?.mch_id || ''}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    payment_config: {
+                      ...settings.payment_config,
+                      wechat: {
+                        ...settings.payment_config?.wechat,
+                        mch_id: e.target.value
+                      }
+                    }
+                  })}
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                  placeholder="微信支付商户号"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">API密钥</label>
+                <input
+                  type="password"
+                  value={settings.payment_config?.wechat?.api_key || ''}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    payment_config: {
+                      ...settings.payment_config,
+                      wechat: {
+                        ...settings.payment_config?.wechat,
+                        api_key: e.target.value
+                      }
+                    }
+                  })}
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                  placeholder="微信支付API密钥"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">App Secret</label>
+                <input
+                  type="password"
+                  value={settings.payment_config?.wechat?.app_secret || ''}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    payment_config: {
+                      ...settings.payment_config,
+                      wechat: {
+                        ...settings.payment_config?.wechat,
+                        app_secret: e.target.value
+                      }
+                    }
+                  })}
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                  placeholder="微信应用密钥"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">沙箱模式</label>
+                <div className="mt-1">
+                  <input
+                    type="checkbox"
+                    id="wechat_sandbox"
+                    checked={settings.payment_config?.wechat?.sandbox_mode || false}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      payment_config: {
+                        ...settings.payment_config,
+                        wechat: {
+                          ...settings.payment_config?.wechat,
+                          sandbox_mode: e.target.checked
+                        }
+                      }
+                    })}
+                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="wechat_sandbox" className="ml-2 text-sm text-gray-600">
+                    启用沙箱模式（测试环境）
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <p className="text-sm text-gray-500">
+              <strong>注意:</strong> 支付密钥是敏感信息，请确保服务器安全并且使用环境变量或其他安全方式存储实际生产环境的密钥。
+            </p>
           </div>
         </div>
 

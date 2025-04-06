@@ -217,6 +217,31 @@ export default function Profile() {
               </div>
             </div>
 
+            {/* Shipping Addresses */}
+            <div className="bg-white rounded-lg shadow" id="addresses">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-medium text-gray-900">收货地址</h3>
+                  <button
+                    onClick={() => navigate('/checkout?showAddressForm=true')}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    添加新地址
+                  </button>
+                </div>
+                {/* 地址列表 - 由于页面分离，我们提供一个链接到完整的结算页面 */}
+                <p className="text-gray-600 mb-4">
+                  您可以在结算过程中管理您的收货地址，或点击上方按钮添加新地址。
+                </p>
+                <button
+                  onClick={() => navigate('/checkout')}
+                  className="text-indigo-600 hover:text-indigo-800 font-medium"
+                >
+                  前往地址管理 →
+                </button>
+              </div>
+            </div>
+
             {/* Account Settings */}
             <div className="bg-white rounded-lg shadow">
               <div className="p-6">

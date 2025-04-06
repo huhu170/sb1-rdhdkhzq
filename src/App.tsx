@@ -12,11 +12,13 @@ import Register from './pages/auth/Register';
 import Dashboard from './pages/admin/Dashboard';
 import Cart from './pages/cart/Cart';
 import Checkout from './pages/checkout/Checkout';
+import Payment from './pages/payment/Payment';
 import Profile from './pages/profile/Profile';
 import Orders from './pages/profile/Orders';
 import Customize from './pages/customize/Customize';
 import ProductList from './pages/products/ProductList';
 import ProgressBar from './components/ProgressBar';
+import TrackingPage from './pages/tracking/TrackingPage';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -88,6 +90,18 @@ function AppRoutes() {
           }
         />
 
+        {/* Payment Route */}
+        <Route
+          path="/payment/:id"
+          element={
+            <ProtectedRoute>
+              <Navbar />
+              <Payment />
+              <Footer />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Profile Routes */}
         <Route
           path="/profile"
@@ -147,6 +161,28 @@ function AppRoutes() {
             <Footer />
           </div>
         } />
+
+        {/* 跟踪页面 */}
+        <Route
+          path="/tracking"
+          element={
+            <>
+              <Navbar />
+              <TrackingPage />
+              <Footer />
+            </>
+          }
+        />
+        <Route
+          path="/tracking/:order_id"
+          element={
+            <>
+              <Navbar />
+              <TrackingPage />
+              <Footer />
+            </>
+          }
+        />
       </Routes>
     </Router>
   );

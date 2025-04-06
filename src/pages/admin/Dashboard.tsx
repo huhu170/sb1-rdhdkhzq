@@ -1,17 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNavigate, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { PlusCircle, Image, FileText, LogOut, Upload, X, Layout, LayoutDashboard, Images, FileEdit, Eye, Plus, Trash2, Settings, Users } from 'lucide-react';
+import { PlusCircle, Image, FileText, LogOut, Upload, X, Layout, LayoutDashboard, Images, FileEdit, Eye, Plus, Trash2, Settings, Users, Package, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import UserList from './users/UserList';
 import BannerList from './banners/BannerList';
 import ProductList from './products/ProductList';
 import SiteSettings from './settings/SiteSettings';
 import ArticleList from './articles/ArticleList';
+import OrderList from './orders/OrderList';
+import OrderDetail from './orders/OrderDetail';
 
 // 定义管理模块
 const ADMIN_MODULES = [
   { id: 'articles', name: 'SIJOER女孩管理', icon: FileEdit },
+  { id: 'orders', name: '订单管理', icon: ShoppingBag },
   { id: 'users', name: '账号管理', icon: Users },
   { id: 'banners', name: '轮播图管理', icon: Images },
   { id: 'products', name: '产品管理', icon: Layout },
@@ -100,6 +103,8 @@ export default function Dashboard() {
             <Route path="banners" element={<BannerList />} />
             <Route path="products" element={<ProductList />} />
             <Route path="settings" element={<SiteSettings />} />
+            <Route path="orders" element={<OrderList />} />
+            <Route path="orders/:id" element={<OrderDetail />} />
           </Routes>
         </div>
       </main>

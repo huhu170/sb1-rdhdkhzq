@@ -203,6 +203,9 @@ export default function CustomizationTool({ initialProduct }: CustomizationToolP
 
       if (addError) throw addError;
 
+      // 触发自定义事件通知导航栏更新购物车计数
+      window.dispatchEvent(new CustomEvent('cart-updated'));
+
       // Show success message
       alert('已添加到购物车');
       
