@@ -7,38 +7,48 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   isAuthenticated: boolean;
+  userRoles: string[];
+  isAdmin: boolean;
+  isSuperAdmin: boolean;
   refreshSession: () => Promise<void>;
+  checkUserRole: (role: string) => boolean;
 }
 
 // 创建认证上下文
-const AuthContext = createContext<AuthContextType>({
-  session: null,
-  user: null,
-  loading: true,
-  isAuthenticated: false,
-  refreshSession: async () => {}
-});
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// 超级管理员邮箱常量
+const SUPERADMIN_EMAIL = 'admin@sijoer.com';
 
 // 创建Provider组件
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userRoles, setUserRoles] = useState<string[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   // 刷新会话方法
   const refreshSession = async () => {
     console.log('手动刷新会话...');
     try {
       setLoading(true);
-      const { data, error } = await supabase.auth.getSession();
+      const { data, error } = await supabase.auth.refreshSession();
       if (error) throw error;
       
       console.log('刷新会话结果:', data.session ? '成功' : '无活动会话');
       setSession(data.session);
+      setUser(data.session?.user || null);
       
       if (data.session) {
         localStorage.setItem('sijoer-auth-session', JSON.stringify(data.session));
       } else {
         localStorage.removeItem('sijoer-auth-session');
+      }
+
+      if (data.session?.user) {
+        await fetchUserRoles(data.session.user.id);
       }
     } catch (err) {
       console.error('刷新会话失败:', err);
@@ -47,77 +57,219 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // 直接检查当前会话信息并更新超级管理员状态
+  const checkAndUpdateSuperAdmin = (currentUser: User | null) => {
+    const isSuperAdminUser = currentUser?.email === SUPERADMIN_EMAIL;
+    console.log(`超级管理员检查: ${currentUser?.email} === ${SUPERADMIN_EMAIL} = ${isSuperAdminUser}`);
+    setIsSuperAdmin(isSuperAdminUser);
+    return isSuperAdminUser;
+  };
+
   // 尝试从本地存储恢复会话，加速初始渲染
   useEffect(() => {
     console.log('AuthContext: 初始化认证状态...');
     
     // 立即尝试从localStorage获取缓存的会话
     const cachedSession = localStorage.getItem('sijoer-auth-session');
-    if (cachedSession) {
-      try {
-        const parsedSession = JSON.parse(cachedSession);
-        if (parsedSession && new Date(parsedSession.expires_at * 1000) > new Date()) {
-          console.log('AuthContext: 从缓存加载会话, 用户ID:', parsedSession.user?.id);
-          setSession(parsedSession);
-          setLoading(false);
-        } else {
-          console.log('AuthContext: 缓存会话已过期');
+    
+    const initFromCache = () => {
+      if (cachedSession) {
+        try {
+          const parsedSession = JSON.parse(cachedSession);
+          if (parsedSession && new Date(parsedSession.expires_at * 1000) > new Date()) {
+            console.log('AuthContext: 从缓存加载会话, 用户ID:', parsedSession.user?.id);
+            setSession(parsedSession);
+            setUser(parsedSession.user || null);
+            
+            // 立即检查超级管理员状态
+            checkAndUpdateSuperAdmin(parsedSession.user);
+            
+            // 如果有缓存的用户角色，也读取它
+            const cachedRoles = localStorage.getItem('sijoer-user-roles');
+            if (cachedRoles) {
+              try {
+                setUserRoles(JSON.parse(cachedRoles));
+                setIsAdmin(JSON.parse(cachedRoles).includes('admin'));
+              } catch (e) {
+                console.error('AuthContext: 解析缓存角色出错:', e);
+              }
+            }
+            
+            return true;
+          } else {
+            console.log('AuthContext: 缓存会话已过期');
+          }
+        } catch (e) {
+          console.error('AuthContext: 解析缓存会话出错:', e);
         }
-      } catch (e) {
-        console.error('AuthContext: 解析缓存会话出错:', e);
+      } else {
+        console.log('AuthContext: 未找到缓存会话');
       }
+      return false;
+    };
+
+    // 先从缓存初始化
+    const initSuccess = initFromCache();
+    
+    // 设置一个标志来避免重复设置加载状态
+    let isMounted = true;
+    
+    // 函数用于获取最新会话
+    const getLatestSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (!isMounted) return;
+        
+        if (error) {
+          console.error('AuthContext: 获取会话失败:', error);
+          setLoading(false);
+          return;
+        }
+        
+        console.log('AuthContext: 服务器会话状态:', session ? '已登录' : '未登录');
+        
+        setSession(session);
+        setUser(session?.user || null);
+        
+        // 检查超级管理员状态
+        checkAndUpdateSuperAdmin(session?.user || null);
+        
+        // 更新缓存
+        if (session) {
+          localStorage.setItem('sijoer-auth-session', JSON.stringify(session));
+          if (session.user) {
+            await fetchUserRoles(session.user.id);
+          }
+        } else {
+          localStorage.removeItem('sijoer-auth-session');
+          localStorage.removeItem('sijoer-user-roles');
+        }
+      } catch (err) {
+        console.error('获取会话时出错:', err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+    
+    // 如果缓存已成功初始化，延迟获取最新会话以避免阻塞渲染
+    if (initSuccess) {
+      setLoading(false);
+      // 延迟获取最新会话，减少初始加载压力
+      setTimeout(() => {
+        if (isMounted) getLatestSession();
+      }, 2000);
     } else {
-      console.log('AuthContext: 未找到缓存会话');
+      // 如果缓存未成功初始化，立即获取会话
+      getLatestSession();
     }
 
-    // 无论是否有缓存，都从服务器获取最新状态
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        console.error('AuthContext: 获取会话失败:', error);
-      } else {
-        console.log('AuthContext: 服务器会话状态:', session ? '已登录' : '未登录');
-      }
-      
-      setSession(session);
-      setLoading(false);
-      
-      // 更新缓存
-      if (session) {
-        localStorage.setItem('sijoer-auth-session', JSON.stringify(session));
-      } else {
-        localStorage.removeItem('sijoer-auth-session');
-      }
-    });
-
     // 监听认证状态变化
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!isMounted) return;
+      
       console.log('AuthContext: 认证状态变化:', _event, session ? '有会话' : '无会话');
       setSession(session);
-      setLoading(false);
+      setUser(session?.user || null);
+      
+      // 立即检查超级管理员状态
+      checkAndUpdateSuperAdmin(session?.user || null);
       
       // 更新缓存
       if (session) {
         localStorage.setItem('sijoer-auth-session', JSON.stringify(session));
+        if (session.user) {
+          await fetchUserRoles(session.user.id);
+        }
       } else {
         localStorage.removeItem('sijoer-auth-session');
+        localStorage.removeItem('sijoer-user-roles');
       }
+      
+      setLoading(false);
     });
 
-    // 清理订阅
-    return () => subscription.unsubscribe();
+    // 清理订阅和mounted标志
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
+
+  async function fetchUserRoles(userId: string) {
+    try {
+      // 先尝试从缓存获取角色信息
+      const cachedRoles = localStorage.getItem('sijoer-user-roles');
+      if (cachedRoles) {
+        const roles = JSON.parse(cachedRoles);
+        setUserRoles(roles);
+        setIsAdmin(roles.includes('admin'));
+      }
+      
+      // 然后从服务器获取最新角色
+      const { data, error } = await supabase
+        .from('user_role_names')
+        .select('role_name')
+        .eq('user_id', userId);
+
+      if (error) {
+        throw error;
+      }
+
+      const roles = data?.map(item => item.role_name) || [];
+      setUserRoles(roles);
+      setIsAdmin(roles.includes('admin'));
+      console.log('角色检查:', roles, '用户邮箱:', user?.email);
+      
+      // 缓存角色信息到本地存储
+      localStorage.setItem('sijoer-user-roles', JSON.stringify(roles));
+      
+      // 超级管理员判断移到了checkAndUpdateSuperAdmin函数
+      // 但是在此处仍然检查一次以防万一
+      if (user?.email === SUPERADMIN_EMAIL) {
+        console.log('在fetchUserRoles中设置为超级管理员');
+        setIsSuperAdmin(true);
+      }
+    } catch (error) {
+      console.error('Error fetching user roles:', error);
+      // 如果出错，保留之前的角色状态，不要重置
+      
+      // 即使出错，也要确保超级管理员状态正确
+      if (user?.email === SUPERADMIN_EMAIL) {
+        setIsSuperAdmin(true);
+      }
+    }
+  }
+
+  const checkUserRole = (role: string): boolean => {
+    // 超级管理员拥有所有角色
+    if (user?.email === SUPERADMIN_EMAIL) return true;
+    return userRoles.includes(role);
+  };
 
   // 构造上下文值
   const value = {
     session,
-    user: session?.user || null,
+    user,
     loading,
     isAuthenticated: !!session?.user,
-    refreshSession
+    userRoles,
+    isAdmin,
+    isSuperAdmin,
+    refreshSession,
+    checkUserRole
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
+}
 
 // 导出使用上下文的钩子
-export const useAuth = () => useContext(AuthContext); 
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+} 

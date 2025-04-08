@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
-import { Plus, Search, Edit, Trash2, Download, Upload, Filter, RefreshCw } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Download, RefreshCw, Shield } from 'lucide-react';
 import UserForm from './UserForm';
 
 interface User {
@@ -9,12 +9,13 @@ interface User {
   display_name: string | null;
   phone: string | null;
   status: string;
+  account_type: string;
   last_login_at: string | null;
   roles: string[];
   created_at: string | null;
 }
 
-export default function UserList() {
+export default function AdminUserList() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,15 +47,16 @@ export default function UserList() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      // 只获取账号类型为admin的用户
       const { data, error } = await supabase
         .from('user_view')
         .select('*')
-        .eq('account_type', 'customer');
+        .eq('account_type', 'admin');
 
       if (error) throw error;
       setUsers(data || []);
     } catch (err: any) {
-      console.error('Error fetching users:', err);
+      console.error('Error fetching admin users:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -67,7 +69,7 @@ export default function UserList() {
   };
 
   const handleDelete = async (userId: string) => {
-    if (!window.confirm('确定要删除此用户吗？此操作不可恢复。')) {
+    if (!window.confirm('确定要删除此管理员账号吗？此操作不可恢复。')) {
       return;
     }
 
@@ -77,7 +79,7 @@ export default function UserList() {
       
       await fetchUsers();
     } catch (err: any) {
-      console.error('Error deleting user:', err);
+      console.error('Error deleting admin user:', err);
       setError(err.message);
     }
   };
@@ -101,7 +103,7 @@ export default function UserList() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'users.csv';
+    a.download = 'admin_users.csv';
     a.click();
     window.URL.revokeObjectURL(url);
   };
@@ -152,7 +154,7 @@ export default function UserList() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">用户账号管理</h2>
+        <h2 className="text-2xl font-bold text-gray-900">系统账号管理</h2>
         <div className="flex space-x-4">
           <button
             onClick={handleExport}
@@ -169,7 +171,7 @@ export default function UserList() {
             className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-indigo-700"
           >
             <Plus className="w-4 h-4 mr-2" />
-            添加账号
+            添加管理员
           </button>
         </div>
       </div>
@@ -186,7 +188,7 @@ export default function UserList() {
           <div className="md:col-span-2 relative">
             <input
               type="text"
-              placeholder="搜索前台用户..."
+              placeholder="搜索管理员账号..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
@@ -225,9 +227,9 @@ export default function UserList() {
         
         <div className="mb-4 flex items-center justify-between">
           <div className="text-sm text-gray-500">
-            共 <span className="font-medium text-gray-700">{filteredUsers.length}</span> 个前台用户
+            共 <span className="font-medium text-gray-700">{filteredUsers.length}</span> 个管理员账号
             {filteredUsers.length !== users.length && 
-              ` (筛选自 ${users.length} 个用户)`
+              ` (筛选自 ${users.length} 个账号)`
             }
           </div>
           <button 
@@ -245,7 +247,7 @@ export default function UserList() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                用户信息
+                管理员信息
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 角色
@@ -254,7 +256,7 @@ export default function UserList() {
                 状态
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                注册/登录时间
+                最后登录
               </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                 操作
@@ -262,85 +264,69 @@ export default function UserList() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {filteredUsers.length > 0 ? (
-              filteredUsers.map((user) => (
-                <tr key={user.id}>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center">
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {user.display_name || user.email}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {user.email}
-                        </div>
-                        {user.phone && (
-                          <div className="text-sm text-gray-500">
-                            {user.phone}
-                          </div>
-                        )}
+            {filteredUsers.map(user => (
+              <tr key={user.id}>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex items-center">
+                    <Shield className="flex-shrink-0 h-6 w-6 text-indigo-600 mr-3" />
+                    <div>
+                      <div className="font-medium text-gray-900">{user.email}</div>
+                      <div className="text-sm text-gray-500">
+                        {user.display_name || '未设置显示名称'}
+                        {user.phone && ` · ${user.phone}`}
                       </div>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-wrap gap-2">
-                      {user.roles && user.roles.length > 0 ? (
-                        user.roles.map((role) => (
-                          <span
-                            key={role}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-500">
+                    {user.roles && user.roles.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {user.roles.map(role => (
+                          <span 
+                            key={role} 
                             className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800"
                           >
                             {role}
                           </span>
-                        ))
-                      ) : (
-                        <span className="text-gray-400 text-xs">无角色</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusClass(user.status)}`}>
-                      {getStatusText(user.status)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    <div>
-                      <div className="mb-1">
-                        <span className="font-medium text-xs text-gray-600">注册: </span>
-                        {user.created_at
-                          ? new Date(user.created_at).toLocaleString()
-                          : '未知'}
+                        ))}
                       </div>
-                      <div>
-                        <span className="font-medium text-xs text-gray-600">最后登录: </span>
-                        {user.last_login_at
-                          ? new Date(user.last_login_at).toLocaleString()
-                          : '从未登录'}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-right text-sm font-medium">
-                    <button
-                      onClick={() => handleEdit(user)}
-                      className="text-indigo-600 hover:text-indigo-900 mr-4"
-                      title="编辑"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(user.id)}
-                      className="text-red-600 hover:text-red-900"
-                      title="删除"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))
-            ) : (
+                    ) : (
+                      <span className="text-gray-400">无角色</span>
+                    )}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusClass(user.status)}`}>
+                    {getStatusText(user.status)}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {user.last_login_at 
+                    ? new Date(user.last_login_at).toLocaleString()
+                    : <span className="text-gray-400">从未登录</span>
+                  }
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <button
+                    onClick={() => handleEdit(user)}
+                    className="text-indigo-600 hover:text-indigo-900 mr-4"
+                  >
+                    <Edit className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(user.id)}
+                    className="text-red-600 hover:text-red-900"
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {filteredUsers.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                  未找到匹配的用户账号
+                <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-500">
+                  未找到符合条件的管理员账号
                 </td>
               </tr>
             )}
@@ -350,15 +336,23 @@ export default function UserList() {
 
       {showUserForm && (
         <UserForm
-          user={selectedUser}
+          user={selectedUser ? {
+            ...selectedUser,
+            profile: {
+              display_name: selectedUser.display_name || '',
+              phone: selectedUser.phone || '',
+              status: selectedUser.status,
+              account_type: 'admin' // 确保账号类型为管理员
+            }
+          } : null}
           onClose={() => setShowUserForm(false)}
           onSuccess={() => {
             setShowUserForm(false);
             fetchUsers();
           }}
-          defaultAccountType="customer"
+          defaultAccountType="admin" // 添加时默认为admin类型
         />
       )}
     </div>
   );
-}
+} 

@@ -55,25 +55,115 @@ export default function Login() {
 
   const verifyAdminRole = async () => {
     try {
-      const { data, error } = await supabase
-        .from('user_role_names')
-        .select('role_name')
-        .eq('role_name', 'admin')
-        .single();
-
-      if (error || !data) {
-        // Not an admin, sign out and show error
-        await supabase.auth.signOut();
-        setError('无权限访问管理后台');
+      console.log('开始验证管理员权限');
+      
+      // 先获取当前登录用户信息
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user || !user.id) {
+        console.error('获取用户信息失败');
+        throw new Error('获取用户信息失败');
+      }
+      
+      console.log('当前登录用户ID:', user.id, '邮箱:', user.email);
+      
+      // 检查超级管理员 (直接通过邮箱判断)
+      if (user.email === 'admin@sijoer.com') {
+        console.log('超级管理员账号，直接授权访问');
+        navigate('/admin/dashboard', { replace: true });
         return;
       }
-
-      // Is admin, redirect to dashboard
-      navigate('/admin/dashboard', { replace: true });
-    } catch (err) {
-      console.error('Error verifying admin role:', err);
-      setError('验证管理员权限失败');
+      
+      try {
+        // 查询用户资料中的account_type
+        const { data: userData, error: userError } = await supabase
+          .from('user_profiles')
+          .select('account_type')
+          .eq('id', user.id)
+          .single();
+        
+        if (userError) {
+          console.error('获取用户信息失败:', userError);
+          // 不立即抛出错误，继续尝试其他方法
+        } else {
+          console.log('用户资料:', userData);
+          
+          // 检查账号类型
+          if (userData && userData.account_type === 'admin') {
+            console.log('管理员账号类型验证成功');
+            navigate('/admin/dashboard', { replace: true });
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('查询用户资料失败:', err);
+        // 继续尝试其他方法
+      }
+      
+      try {
+        // 再检查角色表，兼容旧数据
+        const { data: roleData, error: roleError } = await supabase
+          .from('user_role_names')
+          .select('role_name')
+          .eq('user_id', user.id)
+          .eq('role_name', 'admin')
+          .maybeSingle(); // 使用maybeSingle代替single，防止无结果时抛出错误
+        
+        console.log('角色验证结果:', roleData, roleError);
+        
+        if (!roleError && roleData && roleData.role_name === 'admin') {
+          console.log('通过角色验证成功');
+          navigate('/admin/dashboard', { replace: true });
+          return;
+        }
+      } catch (err) {
+        console.error('查询角色信息失败:', err);
+        // 继续尝试其他方法
+      }
+      
+      // 最后尝试通过直接查询user_roles表验证
+      try {
+        const { data: userRoleData, error: userRoleError } = await supabase
+          .from('user_roles')
+          .select('role_id')
+          .eq('user_id', user.id);
+        
+        if (!userRoleError && userRoleData && userRoleData.length > 0) {
+          // 查找该用户的所有角色
+          const roleIds = userRoleData.map(ur => ur.role_id);
+          
+          // 获取角色名称
+          const { data: rolesData, error: rolesError } = await supabase
+            .from('roles')
+            .select('name')
+            .in('id', roleIds);
+          
+          if (!rolesError && rolesData) {
+            // 检查是否包含admin角色
+            const isAdmin = rolesData.some(r => r.name === 'admin');
+            
+            if (isAdmin) {
+              console.log('通过直接查询用户角色表验证成功');
+              navigate('/admin/dashboard', { replace: true });
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('直接查询角色表失败:', err);
+      }
+      
+      // 所有验证都失败，不是管理员
+      console.log('验证失败，不是管理员账号');
       await supabase.auth.signOut();
+      setError('您的账号没有权限访问管理后台');
+    } catch (err) {
+      console.error('验证管理员权限失败:', err);
+      setError('验证管理员权限失败');
+      
+      // 清除会话
+      await supabase.auth.signOut();
+      localStorage.removeItem('sijoer-auth-session');
     }
   };
 

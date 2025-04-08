@@ -1,6 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { Save, Plus, Trash2, GripVertical, Upload } from 'lucide-react';
+import { message } from 'antd';
+import { debounce } from 'lodash';
+
+interface SupabaseError {
+  message: string;
+  code?: string;
+}
 
 interface SiteSettings {
   id: string;
@@ -59,6 +66,15 @@ export default function SiteSettings() {
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
+  const debouncedSetFormData = useMemo(
+    () => debounce((value: Partial<SiteSettings>) => {
+      if (settings) {
+        setSettings(prev => prev ? { ...prev, ...value } : null);
+      }
+    }, 300),
+    [settings]
+  );
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -66,86 +82,185 @@ export default function SiteSettings() {
   const fetchSettings = async () => {
     try {
       setLoading(true);
+      console.log('正在获取设置...');
+      
       const { data, error } = await supabase
         .from('site_settings')
         .select('*')
+        .eq('id', 'default')
         .single();
 
-      if (error) throw error;
-      
-      // 确保payment_config存在默认值
-      if (!data.payment_config) {
-        data.payment_config = {
-          alipay: {
-            enabled: false,
-            app_id: '',
-            private_key: '',
-            public_key: '',
-            sandbox_mode: true
-          },
-          wechat: {
-            enabled: false,
-            app_id: '',
-            mch_id: '',
-            api_key: '',
-            app_secret: '',
-            sandbox_mode: true
-          }
-        };
-      } else {
-        // 确保alipay配置存在
-        if (!data.payment_config.alipay) {
-          data.payment_config.alipay = {
-            enabled: false,
-            app_id: '',
-            private_key: '',
-            public_key: '',
-            sandbox_mode: true
-          };
-        }
-        
-        // 确保wechat配置存在
-        if (!data.payment_config.wechat) {
-          data.payment_config.wechat = {
-            enabled: false,
-            app_id: '',
-            mch_id: '',
-            api_key: '',
-            app_secret: '',
-            sandbox_mode: true
-          };
-        }
+      if (error) {
+        console.error('获取设置失败:', error);
+        throw error;
       }
       
+      console.log('获取到的设置:', data);
       setSettings(data);
     } catch (err: any) {
-      console.error('Error fetching settings:', err);
+      console.error('获取设置时出错:', err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
+  const validateForm = () => {
+    const errors: string[] = [];
+    if (!settings?.site_title.trim()) errors.push('标题不能为空');
+    if (!settings?.logo_url) errors.push('请上传图片');
+    return errors;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const errors = validateForm();
+    if (errors.length > 0) {
+      errors.forEach(err => message.error(err));
+      return;
+    }
     if (!settings) return;
 
     try {
       setSaving(true);
       setError(null);
 
-      const { error } = await supabase
-        .from('site_settings')
-        .update(settings)
-        .eq('id', settings.id);
+      console.log('正在保存设置 - 数据详情:', JSON.stringify(settings, null, 2));
 
-      if (error) throw error;
+      // 检查settings对象中是否有缺失字段
+      for (const key of ['logo_url', 'site_title', 'company_name', 'nav_items', 'social_links']) {
+        if (settings[key as keyof SiteSettings] === undefined) {
+          console.warn(`警告: 字段 ${key} 缺失`);
+        }
+      }
+
+      // 首先检查表是否存在
+      const { count, error: checkError } = await supabase
+        .from('site_settings')
+        .select('*', { count: 'exact', head: true })
+        .eq('id', 'default');
       
-      // Show success message
-      alert('设置已保存');
+      if (checkError) {
+        console.error('检查表失败:', checkError);
+        throw new Error(`检查表失败: ${checkError.message}`);
+      }
+
+      console.log('检查表结果:', count);
+
+      let updateResult;
+      
+      if (count && count > 0) {
+        // 表存在，执行更新
+        console.log('执行更新操作');
+        updateResult = await supabase
+          .from('site_settings')
+          .update({
+            logo_url: settings.logo_url,
+            site_title: settings.site_title,
+            site_description: settings.site_description,
+            site_keywords: settings.site_keywords,
+            site_author: settings.site_author,
+            company_name: settings.company_name,
+            icp_number: settings.icp_number,
+            icp_link: settings.icp_link,
+            business_license: settings.business_license,
+            business_license_link: settings.business_license_link,
+            nav_font_family: settings.nav_font_family,
+            nav_font_size: settings.nav_font_size,
+            nav_items: settings.nav_items,
+            social_links: settings.social_links,
+            payment_config: settings.payment_config,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', 'default');
+      } else {
+        // 表不存在或记录不存在，执行插入
+        console.log('执行插入操作');
+        updateResult = await supabase
+          .from('site_settings')
+          .insert({
+            id: 'default',
+            logo_url: settings.logo_url,
+            site_title: settings.site_title,
+            site_description: settings.site_description,
+            site_keywords: settings.site_keywords,
+            site_author: settings.site_author,
+            company_name: settings.company_name,
+            icp_number: settings.icp_number,
+            icp_link: settings.icp_link,
+            business_license: settings.business_license,
+            business_license_link: settings.business_license_link,
+            nav_font_family: settings.nav_font_family,
+            nav_font_size: settings.nav_font_size,
+            nav_items: settings.nav_items,
+            social_links: settings.social_links,
+            payment_config: settings.payment_config,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+      }
+
+      const { error } = updateResult;
+
+      if (error) {
+        console.error('保存设置失败 - 完整错误信息:', error);
+        
+        // 分析错误类型并提供更具体的错误消息
+        let errorMessage = `保存失败: ${error.message}`;
+        
+        if (error.code === '23505') {
+          errorMessage = '保存失败: 记录已存在';
+        } else if (error.code === '23502') {
+          errorMessage = '保存失败: 必填字段不能为空';
+        } else if (error.code === '42P01') {
+          errorMessage = '保存失败: 表不存在，请联系管理员';
+        } else if (error.code === '22P02') {
+          errorMessage = '保存失败: 数据格式错误';
+        }
+        
+        throw new Error(errorMessage);
+      }
+      
+      console.log('设置保存成功');
+      // 重新获取最新设置
+      await fetchSettings();
+      
+      // 显示成功提示
+      const successMessage = document.createElement('div');
+      successMessage.className = 'fixed bottom-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-md z-50';
+      successMessage.innerHTML = `
+        <div class="flex items-center">
+          <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <div class="ml-3">
+            <p class="text-sm">设置已保存</p>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(successMessage);
+      setTimeout(() => {
+        document.body.removeChild(successMessage);
+      }, 3000);
+
     } catch (err: any) {
-      console.error('Error saving settings:', err);
-      setError(err.message);
+      console.error('保存设置时出错:', err);
+      // 提供更具体的错误信息
+      let errorMessage = err.message || '保存失败，请重试';
+      
+      // 检查是否是网络错误
+      if (!navigator.onLine) {
+        errorMessage = '网络连接已断开，请检查您的网络连接后重试';
+      }
+      
+      // 检查是否是权限错误
+      if (err.code === 'PGRST301' || err.code === '42501') {
+        errorMessage = '权限不足，请确认您有权限修改设置';
+      }
+      
+      setError(errorMessage);
     } finally {
       setSaving(false);
     }
@@ -155,6 +270,7 @@ export default function SiteSettings() {
     try {
       setIsUploading(true);
       setError(null);
+      console.log(`开始上传图标，linkId: ${linkId}, 文件名: ${file.name}, 类型: ${file.type}, 大小: ${file.size}字节`);
 
       if (file.size > 1 * 1024 * 1024) {
         throw new Error('图标文件大小不能超过1MB');
@@ -164,17 +280,69 @@ export default function SiteSettings() {
       const fileName = `${Date.now()}_${linkId}.${fileExt}`;
       const filePath = `icons/${fileName}`;
 
+      console.log(`准备上传文件到路径: ${filePath}`);
+
+      // 检查images存储桶是否存在
+      const { data: buckets, error: bucketsError } = await supabase.storage
+        .listBuckets();
+      
+      console.log('存储桶列表:', buckets);
+      
+      if (bucketsError) {
+        console.error('获取存储桶列表失败:', bucketsError);
+        throw new Error(`获取存储桶列表失败: ${bucketsError.message}`);
+      }
+      
+      const bucketExists = buckets?.some(b => b.name === 'images');
+      console.log('images存储桶是否存在:', bucketExists);
+
+      // 创建images存储桶（如果不存在）
+      if (!bucketExists) {
+        console.log('创建images存储桶');
+        const { data: bucketData, error: bucketError } = await supabase.storage
+          .createBucket('images', {
+            public: true,
+            allowedMimeTypes: ['image/svg+xml', 'image/png', 'image/jpeg', 'image/gif'],
+            fileSizeLimit: 1024 * 1024,
+          });
+
+        if (bucketError) {
+          console.error('创建存储桶失败:', bucketError);
+          throw new Error(`创建存储桶失败: ${bucketError.message}`);
+        }
+
+        console.log('创建存储桶成功:', bucketData);
+      }
+
+      // 上传文件
+      console.log('开始上传文件');
       const { error: uploadError } = await supabase.storage
         .from('images')
-        .upload(filePath, file);
+        .upload(filePath, file, {
+          upsert: true,
+          contentType: file.type
+        });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('上传图标失败:', uploadError);
+        throw new Error(`上传图标失败: ${uploadError.message}`);
+      }
 
+      console.log('文件上传成功');
+
+      // 获取公共URL
       const { data: urlData } = supabase.storage
         .from('images')
         .getPublicUrl(filePath);
 
-      // Update the icon URL in the social links array
+      if (!urlData || !urlData.publicUrl) {
+        console.error('获取公共URL失败, urlData:', urlData);
+        throw new Error('获取图标公共URL失败');
+      }
+
+      console.log('获取到的图标URL:', urlData.publicUrl);
+
+      // 更新社交链接中的图标URL
       setSettings(prev => {
         if (!prev) return prev;
         const newSocialLinks = prev.social_links.map(link => 
@@ -182,11 +350,54 @@ export default function SiteSettings() {
             ? { ...link, icon_url: urlData.publicUrl }
             : link
         );
+        
+        console.log('更新后的社交链接:', newSocialLinks);
         return { ...prev, social_links: newSocialLinks };
       });
+      
+      // 显示成功提示
+      const successMessage = document.createElement('div');
+      successMessage.className = 'fixed bottom-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-md z-50';
+      successMessage.innerHTML = `
+        <div class="flex items-center">
+          <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <div class="ml-3">
+            <p class="text-sm">图标上传成功</p>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(successMessage);
+      setTimeout(() => {
+        document.body.removeChild(successMessage);
+      }, 3000);
+      
     } catch (err: any) {
-      console.error('Error uploading icon:', err);
+      console.error('上传图标错误:', err);
       setError(err.message || '图标上传失败');
+      
+      // 显示错误提示
+      const errorMessage = document.createElement('div');
+      errorMessage.className = 'fixed bottom-4 right-4 bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-md z-50';
+      errorMessage.innerHTML = `
+        <div class="flex items-center">
+          <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </div>
+          <div class="ml-3">
+            <p class="text-sm">${err.message || '图标上传失败'}</p>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(errorMessage);
+      setTimeout(() => {
+        document.body.removeChild(errorMessage);
+      }, 5000);
     } finally {
       setIsUploading(false);
     }
@@ -196,8 +407,8 @@ export default function SiteSettings() {
     if (!settings) return;
     const newItem = {
       id: crypto.randomUUID(),
-      label: '新菜单项',
-      href: '#',
+      label: 'RGP & OK镜',
+      href: '/rgpok',
       subItems: []
     };
     setSettings(prev => ({
@@ -268,6 +479,19 @@ export default function SiteSettings() {
     }));
   };
 
+  const handleImageUpload = async (file: File) => {
+    try {
+      setIsUploading(true);
+      // ... 上传逻辑 ...
+    } catch (error) {
+      const supabaseError = error as SupabaseError;
+      console.error('图片上传失败:', supabaseError);
+      message.error(supabaseError.message || '图片上传失败,请重试');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -315,9 +539,10 @@ export default function SiteSettings() {
                 网站标题
               </label>
               <input
+                aria-label="轮播图标题"
                 type="text"
                 value={settings.site_title}
-                onChange={(e) => setSettings(prev => ({ ...prev!, site_title: e.target.value }))}
+                onChange={(e) => debouncedSetFormData({ site_title: e.target.value })}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
               />
             </div>
@@ -329,7 +554,7 @@ export default function SiteSettings() {
               <textarea
                 rows={3}
                 value={settings.site_description}
-                onChange={(e) => setSettings(prev => ({ ...prev!, site_description: e.target.value }))}
+                onChange={(e) => debouncedSetFormData({ site_description: e.target.value })}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
               />
             </div>
@@ -341,7 +566,7 @@ export default function SiteSettings() {
               <input
                 type="text"
                 value={settings.site_keywords}
-                onChange={(e) => setSettings(prev => ({ ...prev!, site_keywords: e.target.value }))}
+                onChange={(e) => debouncedSetFormData({ site_keywords: e.target.value })}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
               />
               <p className="mt-1 text-sm text-gray-500">
@@ -356,7 +581,7 @@ export default function SiteSettings() {
               <input
                 type="text"
                 value={settings.site_author}
-                onChange={(e) => setSettings(prev => ({ ...prev!, site_author: e.target.value }))}
+                onChange={(e) => debouncedSetFormData({ site_author: e.target.value })}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
               />
             </div>
@@ -373,7 +598,7 @@ export default function SiteSettings() {
               className="flex items-center text-sm text-indigo-600 hover:text-indigo-700"
             >
               <Plus className="w-4 h-4 mr-1" />
-              添加菜单项
+              添加导航项
             </button>
           </div>
 
@@ -558,13 +783,17 @@ export default function SiteSettings() {
                         <Upload className="w-4 h-4 mr-2" />
                         上传图标
                       </label>
-                      {link.icon && (
+                      {link.icon_url || link.icon ? (
                         <div className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-md">
-                          <svg viewBox="0 0 24 24" className="w-6 h-6">
-                            <path d={link.icon} />
-                          </svg>
+                          {link.icon_url ? (
+                            <img src={link.icon_url} alt={link.platform} className="w-6 h-6" />
+                          ) : (
+                            <svg viewBox="0 0 24 24" className="w-6 h-6">
+                              <path d={link.icon} />
+                            </svg>
+                          )}
                         </div>
-                      )}
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => removeSocialLink(link.id)}
@@ -591,7 +820,7 @@ export default function SiteSettings() {
               <input
                 type="text"
                 value={settings.company_name}
-                onChange={(e) => setSettings(prev => ({ ...prev!, company_name: e.target.value }))}
+                onChange={(e) => debouncedSetFormData({ company_name: e.target.value })}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
               />
             </div>
@@ -603,7 +832,7 @@ export default function SiteSettings() {
               <input
                 type="text"
                 value={settings.icp_number}
-                onChange={(e) => setSettings(prev => ({ ...prev!, icp_number: e.target.value }))}
+                onChange={(e) => debouncedSetFormData({ icp_number: e.target.value })}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
               />
             </div>
@@ -615,7 +844,7 @@ export default function SiteSettings() {
               <input
                 type="url"
                 value={settings.icp_link}
-                onChange={(e) => setSettings(prev => ({ ...prev!, icp_link: e.target.value }))}
+                onChange={(e) => debouncedSetFormData({ icp_link: e.target.value })}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
               />
             </div>
@@ -627,7 +856,7 @@ export default function SiteSettings() {
               <input
                 type="text"
                 value={settings.business_license}
-                onChange={(e) => setSettings(prev => ({ ...prev!, business_license: e.target.value }))}
+                onChange={(e) => debouncedSetFormData({ business_license: e.target.value })}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
               />
             </div>
@@ -639,275 +868,10 @@ export default function SiteSettings() {
               <input
                 type="url"
                 value={settings.business_license_link}
-                onChange={(e) => setSettings(prev => ({ ...prev!, business_license_link: e.target.value }))}
+                onChange={(e) => debouncedSetFormData({ business_license_link: e.target.value })}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
               />
             </div>
-          </div>
-        </div>
-
-        {/* 支付配置部分 */}
-        <div className="bg-white shadow-sm rounded-lg p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">支付配置</h3>
-
-          {/* 支付宝配置 */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="text-md font-medium text-gray-800">支付宝</h4>
-              <div className="flex items-center">
-                <span className="mr-2 text-sm text-gray-600">启用</span>
-                <div className="relative inline-block w-10 mr-2 align-middle select-none">
-                  <input 
-                    type="checkbox" 
-                    name="alipay_enabled" 
-                    id="alipay_enabled" 
-                    checked={settings.payment_config?.alipay?.enabled || false}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      payment_config: {
-                        ...settings.payment_config,
-                        alipay: {
-                          ...settings.payment_config?.alipay,
-                          enabled: e.target.checked
-                        }
-                      }
-                    })}
-                    className="checked:bg-indigo-500 outline-none focus:outline-none right-4 checked:right-0 duration-200 ease-in absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"
-                  />
-                  <label htmlFor="alipay_enabled" className="block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">App ID</label>
-                <input
-                  type="text"
-                  value={settings.payment_config?.alipay?.app_id || ''}
-                  onChange={(e) => setSettings({
-                    ...settings,
-                    payment_config: {
-                      ...settings.payment_config,
-                      alipay: {
-                        ...settings.payment_config?.alipay,
-                        app_id: e.target.value
-                      }
-                    }
-                  })}
-                  className="w-full p-2 border border-gray-300 rounded-md"
-                  placeholder="支付宝App ID"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">沙箱模式</label>
-                <div className="mt-1">
-                  <input
-                    type="checkbox"
-                    id="alipay_sandbox"
-                    checked={settings.payment_config?.alipay?.sandbox_mode || false}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      payment_config: {
-                        ...settings.payment_config,
-                        alipay: {
-                          ...settings.payment_config?.alipay,
-                          sandbox_mode: e.target.checked
-                        }
-                      }
-                    })}
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="alipay_sandbox" className="ml-2 text-sm text-gray-600">
-                    启用沙箱模式（测试环境）
-                  </label>
-                </div>
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">应用私钥</label>
-                <textarea
-                  value={settings.payment_config?.alipay?.private_key || ''}
-                  onChange={(e) => setSettings({
-                    ...settings,
-                    payment_config: {
-                      ...settings.payment_config,
-                      alipay: {
-                        ...settings.payment_config?.alipay,
-                        private_key: e.target.value
-                      }
-                    }
-                  })}
-                  rows={3}
-                  className="w-full p-2 border border-gray-300 rounded-md"
-                  placeholder="应用私钥，用于签名"
-                ></textarea>
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">支付宝公钥</label>
-                <textarea
-                  value={settings.payment_config?.alipay?.public_key || ''}
-                  onChange={(e) => setSettings({
-                    ...settings,
-                    payment_config: {
-                      ...settings.payment_config,
-                      alipay: {
-                        ...settings.payment_config?.alipay,
-                        public_key: e.target.value
-                      }
-                    }
-                  })}
-                  rows={3}
-                  className="w-full p-2 border border-gray-300 rounded-md"
-                  placeholder="支付宝公钥，用于验证签名"
-                ></textarea>
-              </div>
-            </div>
-          </div>
-
-          {/* 微信支付配置 */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="text-md font-medium text-gray-800">微信支付</h4>
-              <div className="flex items-center">
-                <span className="mr-2 text-sm text-gray-600">启用</span>
-                <div className="relative inline-block w-10 mr-2 align-middle select-none">
-                  <input 
-                    type="checkbox" 
-                    name="wechat_enabled" 
-                    id="wechat_enabled" 
-                    checked={settings.payment_config?.wechat?.enabled || false}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      payment_config: {
-                        ...settings.payment_config,
-                        wechat: {
-                          ...settings.payment_config?.wechat,
-                          enabled: e.target.checked
-                        }
-                      }
-                    })}
-                    className="checked:bg-indigo-500 outline-none focus:outline-none right-4 checked:right-0 duration-200 ease-in absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"
-                  />
-                  <label htmlFor="wechat_enabled" className="block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">App ID</label>
-                <input
-                  type="text"
-                  value={settings.payment_config?.wechat?.app_id || ''}
-                  onChange={(e) => setSettings({
-                    ...settings,
-                    payment_config: {
-                      ...settings.payment_config,
-                      wechat: {
-                        ...settings.payment_config?.wechat,
-                        app_id: e.target.value
-                      }
-                    }
-                  })}
-                  className="w-full p-2 border border-gray-300 rounded-md"
-                  placeholder="微信App ID"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">商户号</label>
-                <input
-                  type="text"
-                  value={settings.payment_config?.wechat?.mch_id || ''}
-                  onChange={(e) => setSettings({
-                    ...settings,
-                    payment_config: {
-                      ...settings.payment_config,
-                      wechat: {
-                        ...settings.payment_config?.wechat,
-                        mch_id: e.target.value
-                      }
-                    }
-                  })}
-                  className="w-full p-2 border border-gray-300 rounded-md"
-                  placeholder="微信支付商户号"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">API密钥</label>
-                <input
-                  type="password"
-                  value={settings.payment_config?.wechat?.api_key || ''}
-                  onChange={(e) => setSettings({
-                    ...settings,
-                    payment_config: {
-                      ...settings.payment_config,
-                      wechat: {
-                        ...settings.payment_config?.wechat,
-                        api_key: e.target.value
-                      }
-                    }
-                  })}
-                  className="w-full p-2 border border-gray-300 rounded-md"
-                  placeholder="微信支付API密钥"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">App Secret</label>
-                <input
-                  type="password"
-                  value={settings.payment_config?.wechat?.app_secret || ''}
-                  onChange={(e) => setSettings({
-                    ...settings,
-                    payment_config: {
-                      ...settings.payment_config,
-                      wechat: {
-                        ...settings.payment_config?.wechat,
-                        app_secret: e.target.value
-                      }
-                    }
-                  })}
-                  className="w-full p-2 border border-gray-300 rounded-md"
-                  placeholder="微信应用密钥"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">沙箱模式</label>
-                <div className="mt-1">
-                  <input
-                    type="checkbox"
-                    id="wechat_sandbox"
-                    checked={settings.payment_config?.wechat?.sandbox_mode || false}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      payment_config: {
-                        ...settings.payment_config,
-                        wechat: {
-                          ...settings.payment_config?.wechat,
-                          sandbox_mode: e.target.checked
-                        }
-                      }
-                    })}
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="wechat_sandbox" className="ml-2 text-sm text-gray-600">
-                    启用沙箱模式（测试环境）
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <p className="text-sm text-gray-500">
-              <strong>注意:</strong> 支付密钥是敏感信息，请确保服务器安全并且使用环境变量或其他安全方式存储实际生产环境的密钥。
-            </p>
           </div>
         </div>
 

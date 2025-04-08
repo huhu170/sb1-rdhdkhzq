@@ -6,6 +6,7 @@ interface SocialLink {
   platform: string;
   url: string;
   icon: string;
+  icon_url?: string;
 }
 
 interface FooterSettings {
@@ -66,9 +67,15 @@ export default function Footer() {
 
         // 遍历数据库返回的社交链接，替换图标
         if (data.social_links && data.social_links.length > 0) {
+          // 打印社交链接数据，用于调试
+          console.log("社交链接数据:", JSON.stringify(data.social_links));
+          
           data.social_links = data.social_links.map((link: SocialLink) => {
-            // 如果有自定义图标，替换它
+            // 如果有自定义图标，替换它，但保留icon_url
             if (link.id in customIcons) {
+              if (link.icon_url) {
+                console.log(`链接 ${link.platform} 存在icon_url:`, link.icon_url);
+              }
               return {
                 ...link,
                 icon: customIcons[link.id]
@@ -190,14 +197,26 @@ export default function Footer() {
                   title={link.platform}
                 >
                   <div className="w-16 h-16 flex items-center justify-center rounded-full bg-gray-800 group-hover:bg-indigo-600 transition-colors duration-300">
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="w-8 h-8 fill-current text-gray-300 group-hover:text-white transition-colors duration-300"
-                      data-icon-id={link.id}
-                      style={{border: '1px solid transparent'}}
-                    >
-                      <path d={link.icon} />
-                    </svg>
+                    {link.icon_url ? (
+                      <div className="w-14 h-14 rounded-full overflow-hidden flex items-center justify-center">
+                        <img 
+                          src={link.icon_url} 
+                          alt={link.platform} 
+                          className="w-full h-full object-cover"
+                          onError={() => {
+                            console.log(`图片加载失败: ${link.platform}, URL: ${link.icon_url}`);
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="w-10 h-10 fill-current text-gray-300 group-hover:text-white transition-colors duration-300"
+                        data-icon-id={link.id}
+                      >
+                        <path d={link.icon} />
+                      </svg>
+                    )}
                   </div>
                   <span className="block text-center text-sm mt-2 text-gray-400 group-hover:text-indigo-400 transition-colors duration-300">
                     {link.platform}

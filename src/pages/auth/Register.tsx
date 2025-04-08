@@ -68,7 +68,8 @@ export default function Register() {
         options: {
           data: {
             display_name: formData.displayName.trim(),
-            phone: formData.phone.trim()
+            phone: formData.phone.trim(),
+            account_type: 'customer'
           }
         }
       });

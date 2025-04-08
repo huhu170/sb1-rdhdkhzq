@@ -15,23 +15,27 @@ interface BannerFormProps {
   onSuccess: () => void;
 }
 
+interface SupabaseError {
+  message: string;
+}
+
 export default function BannerForm({ banner, onClose, onSuccess }: BannerFormProps) {
   const [formData, setFormData] = useState({
-    title: banner?.title || '',
-    subtitle: banner?.subtitle || '',
-    image_url: banner?.image_url || '',
+    title: banner?.title || '定制您的专属隐形眼镜',
+    subtitle: banner?.subtitle || '采用先进的数字扫描技术，为您量身定制完美贴合的隐形眼镜，提供无与伦比的舒适体验',
+    image_url: banner?.image_url || 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&q=80&w=2068',
     is_active: banner?.is_active ?? true,
     order: banner?.order || 0
   });
   const [isUploading, setIsUploading] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | undefined>(undefined);
 
   const handleImageUpload = async (file: File) => {
-    try {
-      setIsUploading(true);
-      setError(null);
+    setIsUploading(true);
+    setError(undefined);
 
+    try {
       if (file.size > 5 * 1024 * 1024) {
         throw new Error('图片大小不能超过5MB');
       }
@@ -54,9 +58,10 @@ export default function BannerForm({ banner, onClose, onSuccess }: BannerFormPro
         ...prev,
         image_url: urlData.publicUrl
       }));
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error uploading image:', err);
-      setError(err.message || '图片上传失败');
+      const error = err as SupabaseError;
+      setError(error.message || '图片上传失败');
     } finally {
       setIsUploading(false);
     }
@@ -65,7 +70,7 @@ export default function BannerForm({ banner, onClose, onSuccess }: BannerFormPro
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
+    setError(undefined);
 
     try {
       if (!formData.image_url) {
@@ -96,9 +101,10 @@ export default function BannerForm({ banner, onClose, onSuccess }: BannerFormPro
       }
 
       onSuccess();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error saving banner:', err);
-      setError(err.message);
+      const error = err as SupabaseError;
+      setError(error.message || '保存轮播图失败');
     } finally {
       setLoading(false);
     }

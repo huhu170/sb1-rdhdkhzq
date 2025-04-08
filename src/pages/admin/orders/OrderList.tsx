@@ -67,17 +67,28 @@ export default function OrderList() {
       setError(null);
       setLoadingCount(prev => prev + 1);
 
-      // 1. 先获取订单基础数据
+      console.log('开始获取订单数据...');
+
+      // 直接获取订单基础数据，不尝试使用视图
       const { data: orderData, error: orderError } = await retryOperation(async () => {
-        return await supabase
+        const response = await supabase
           .from('orders')
           .select('*')
           .order('created_at', { ascending: false });
+        
+        console.log('订单基础数据查询结果:', response);
+        return response;
       });
 
-      if (orderError) throw orderError;
+      if (orderError) {
+        console.error('获取订单数据出错:', orderError);
+        throw orderError;
+      }
+      
+      console.log('获取到订单数据条数:', orderData?.length || 0);
       
       if (!orderData || orderData.length === 0) {
+        console.log('没有找到订单数据');
         setOrders([]);
         setFilteredOrders([]);
         setLoading(false);
@@ -89,25 +100,71 @@ export default function OrderList() {
       const addressIds = orderData.map(order => order.shipping_address_id).filter(Boolean);
       const orderIds = orderData.map(order => order.id);
 
-      // 2. 并行查询关联数据
+      console.log('关联ID统计:', {
+        userIds: userIds.length,
+        addressIds: addressIds.length,
+        orderIds: orderIds.length
+      });
+
+      // 并行查询关联数据
       const [
         { data: userData, error: userError },
         { data: addressData, error: addressError },
         { data: paymentData, error: paymentError }
       ] = await Promise.all([
-        // 用户数据
+        // 用户数据 - 直接从user_profiles获取
         userIds.length > 0 
-          ? retryOperation(async () => supabase.from('users').select('id, email').in('id', userIds))
+          ? retryOperation(async () => {
+              console.log('尝试从user_profiles获取用户数据...', userIds);
+              
+              try {
+                // 查询时明确指定所有需要的列名
+                const { data, error } = await supabase
+                  .from('user_profiles')
+                  .select(`id:id, display_name:display_name`);
+                
+                if (error) {
+                  console.error('获取用户数据出错:', error);
+                  return { data: [], error };
+                }
+                
+                if (!data) return { data: [], error: null };
+                
+                // 手动过滤匹配的用户
+                const filteredUsers = data.filter(user => 
+                  userIds.includes(user.id)
+                );
+                
+                console.log(`通过手动过滤匹配到 ${filteredUsers.length} 个用户`);
+                
+                return { data: filteredUsers, error: null };
+              } catch (err) {
+                console.error('处理用户数据时出错:', err);
+                return { data: [], error: err as any };
+              }
+            })
           : Promise.resolve({ data: [], error: null }),
         
         // 地址数据
         addressIds.length > 0
-          ? retryOperation(async () => supabase.from('shipping_addresses').select('id, recipient_name, phone').in('id', addressIds))
+          ? retryOperation(async () => {
+              console.log('尝试获取地址数据...');
+              return await supabase
+                .from('shipping_addresses')
+                .select('id, recipient_name, phone')
+                .in('id', addressIds);
+            })
           : Promise.resolve({ data: [], error: null }),
         
         // 支付数据
         orderIds.length > 0
-          ? retryOperation(async () => supabase.from('payment_records').select('order_id, status, payment_method').in('order_id', orderIds))
+          ? retryOperation(async () => {
+              console.log('尝试获取支付数据...');
+              return await supabase
+                .from('payment_records')
+                .select('order_id, status, payment_method')
+                .in('order_id', orderIds);
+            })
           : Promise.resolve({ data: [], error: null })
       ]);
 
@@ -115,10 +172,15 @@ export default function OrderList() {
       if (addressError) console.warn('获取地址数据出错:', addressError.message);
       if (paymentError) console.warn('获取支付数据出错:', paymentError.message);
 
-      // 3. 组装完整订单数据
+      // 组装完整订单数据
       const enrichedOrders = orderData.map(order => {
         // 关联用户信息
-        const user = userData?.find(u => u.id === order.user_id) || null;
+        const userProfile = userData?.find(u => u?.id === order.user_id) || null;
+        // 模拟user对象以兼容现有代码
+        const user = userProfile ? {
+          id: userProfile.id,
+          email: userProfile.display_name || '未知用户'
+        } : null;
         
         // 关联地址信息
         const shipping_address = addressData?.find(a => a.id === order.shipping_address_id) || null;
@@ -134,9 +196,12 @@ export default function OrderList() {
         };
       });
 
+      console.log('处理完成的订单数据示例:', enrichedOrders.length > 0 ? enrichedOrders[0] : null);
+
       setOrders(enrichedOrders);
       setFilteredOrders(enrichedOrders);
     } catch (err: any) {
+      console.error('获取订单数据失败:', err);
       const handledError = handleSupabaseError(err, '获取订单列表');
       setError(handledError.message);
     } finally {

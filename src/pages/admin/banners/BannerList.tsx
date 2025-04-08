@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { Plus, Search, Edit, Trash2, Eye } from 'lucide-react';
 import BannerForm from './BannerForm';
+import { message } from 'antd';
 
 interface Banner {
   id: string;
@@ -12,12 +13,21 @@ interface Banner {
   order: number;
 }
 
+const DEFAULT_BANNER: Banner = {
+  id: 'default',
+  image_url: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&q=80&w=2068',
+  title: '定制您的专属隐形眼镜',
+  subtitle: '采用先进的数字扫描技术，为您量身定制完美贴合的隐形眼镜，提供无与伦比的舒适体验',
+  is_active: true,
+  order: 0
+};
+
 export default function BannerList() {
   const [banners, setBanners] = useState<Banner[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [selectedBanner, setSelectedBanner] = useState<Banner | null>(null);
+  const [selectedBanner, setSelectedBanner] = useState<Banner | undefined>(undefined);
 
   useEffect(() => {
     fetchBanners();
@@ -32,10 +42,30 @@ export default function BannerList() {
         .order('order');
 
       if (error) throw error;
-      setBanners(data || []);
+
+      // 如果没有数据,插入默认轮播图
+      if (!data || data.length === 0) {
+        console.log('没有轮播图数据,插入默认数据');
+        const { error: insertError } = await supabase
+          .from('banners')
+          .insert([DEFAULT_BANNER]);
+
+        if (insertError) {
+          console.error('插入默认轮播图失败:', insertError);
+          message.error('插入默认轮播图失败');
+          setBanners([DEFAULT_BANNER]); // 即使插入失败也显示默认数据
+        } else {
+          setBanners([DEFAULT_BANNER]);
+          message.success('已添加默认轮播图');
+        }
+      } else {
+        setBanners(data);
+      }
     } catch (err: any) {
-      console.error('Error fetching banners:', err);
+      console.error('获取轮播图失败:', err);
       setError(err.message);
+      // 发生错误时也显示默认数据
+      setBanners([DEFAULT_BANNER]);
     } finally {
       setLoading(false);
     }
@@ -72,13 +102,13 @@ export default function BannerList() {
         <h2 className="text-2xl font-bold text-gray-900">轮播图管理</h2>
         <button
           onClick={() => {
-            setSelectedBanner(null);
+            setSelectedBanner(undefined);
             setShowForm(true);
           }}
           className="flex items-center bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
         >
           <Plus className="w-5 h-5 mr-2" />
-          添加轮播图
+          添加首页轮播
         </button>
       </div>
 
@@ -142,12 +172,12 @@ export default function BannerList() {
           banner={selectedBanner}
           onClose={() => {
             setShowForm(false);
-            setSelectedBanner(null);
+            setSelectedBanner(undefined);
           }}
           onSuccess={() => {
             fetchBanners();
             setShowForm(false);
-            setSelectedBanner(null);
+            setSelectedBanner(undefined);
           }}
         />
       )}

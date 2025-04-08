@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Eye, ChevronDown, ShoppingCart, User } from 'lucide-react';
+import { Eye, ChevronDown, ShoppingCart, User, Glasses } from 'lucide-react';
 import { supabase, handleSupabaseError, retryOperation } from '../lib/supabase';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -37,7 +37,14 @@ export default function Navbar() {
   const { session, loading } = useAuth();
   const navigate = useNavigate();
 
-  const defaultNavItems: NavItem[] = [];
+  const defaultNavItems: NavItem[] = [
+    {
+      id: 'rgpok',
+      label: 'RGP & OK镜',
+      href: '/rgpok',
+      subItems: []
+    }
+  ];
 
   useEffect(() => {
     fetchSettings();
@@ -80,6 +87,36 @@ export default function Navbar() {
   }, [session]);
 
   const fetchSettings = async () => {
+    // 尝试从本地缓存加载设置
+    const cachedSettings = localStorage.getItem('sijoer-site-settings');
+    if (cachedSettings) {
+      try {
+        const parsedSettings = JSON.parse(cachedSettings);
+        const cacheTime = localStorage.getItem('sijoer-settings-timestamp');
+        
+        // 检查缓存是否在24小时内
+        if (cacheTime && (Date.now() - parseInt(cacheTime)) < 24 * 60 * 60 * 1000) {
+          console.log('从缓存加载网站设置');
+          
+          // 确保RGP&OK镜入口始终存在
+          const rgpokExists = parsedSettings.nav_items.some((item: NavItem) => item.href === '/rgpok');
+          if (!rgpokExists) {
+            parsedSettings.nav_items.push({
+              id: 'rgpok',
+              label: 'RGP & OK镜',
+              href: '/rgpok',
+              subItems: []
+            });
+          }
+          
+          setSettings(parsedSettings);
+          return;
+        }
+      } catch (e) {
+        console.error('解析缓存设置出错:', e);
+      }
+    }
+    
     try {
       const { data, error } = await retryOperation(async () => {
         return await supabase
@@ -89,7 +126,24 @@ export default function Navbar() {
       });
 
       if (error) throw error;
-      if (data) setSettings(data);
+      if (data) {
+        // 确保RGP&OK镜入口始终存在
+        const rgpokExists = data.nav_items.some((item: NavItem) => item.href === '/rgpok');
+        if (!rgpokExists) {
+          // 如果服务器返回的导航项中没有RGP&OK镜入口，则添加它
+          data.nav_items.push({
+            id: 'rgpok',
+            label: 'RGP & OK镜',
+            href: '/rgpok',
+            subItems: []
+          });
+        }
+        setSettings(data);
+        
+        // 缓存设置
+        localStorage.setItem('sijoer-site-settings', JSON.stringify(data));
+        localStorage.setItem('sijoer-settings-timestamp', Date.now().toString());
+      }
     } catch (err: any) {
       const handledError = handleSupabaseError(err, 'fetching settings');
       console.error('Error fetching settings:', handledError);
@@ -99,6 +153,23 @@ export default function Navbar() {
 
   const fetchCartItemCount = useCallback(async () => {
     if (!session?.user.id) return;
+    
+    // 尝试从缓存获取购物车数量
+    const cachedCount = localStorage.getItem('sijoer-cart-count');
+    const cacheTime = localStorage.getItem('sijoer-cart-timestamp');
+    
+    if (cachedCount && cacheTime) {
+      try {
+        // 缓存不超过5分钟有效
+        if ((Date.now() - parseInt(cacheTime)) < 5 * 60 * 1000) {
+          console.log('从缓存获取购物车数量');
+          setCartItemCount(parseInt(cachedCount));
+          return;
+        }
+      } catch (e) {
+        console.error('解析缓存购物车数量出错:', e);
+      }
+    }
 
     try {
       // First, try to get the user's cart with retry
@@ -123,6 +194,10 @@ export default function Navbar() {
 
         const count = items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
         setCartItemCount(count);
+        
+        // 缓存购物车数量
+        localStorage.setItem('sijoer-cart-count', count.toString());
+        localStorage.setItem('sijoer-cart-timestamp', Date.now().toString());
       }
     } catch (err: any) {
       const handledError = handleSupabaseError(err, 'fetching cart items');
@@ -134,6 +209,11 @@ export default function Navbar() {
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
+      
+      // 清除本地存储的会话，但不要清除其他有用的缓存数据
+      localStorage.removeItem('sijoer-auth-session');
+      
+      // 使用navigate代替window.location.href，保留React状态
       navigate('/');
     } catch (err: any) {
       console.error('Error signing out:', err);
@@ -169,11 +249,11 @@ export default function Navbar() {
           
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8" style={navStyle}>
-            {/* 只在已加载且登录后才显示导航菜单 */}
+            {/* 显示导航菜单项(对所有用户可见) */}
             {isLoading ? (
               // 加载状态时显示占位符
               <div className="w-8 h-6"></div>
-            ) : session && (settings?.nav_items || defaultNavItems).map((item) => (
+            ) : (settings?.nav_items || defaultNavItems).map((item) => (
               <div
                 key={item.id}
                 className="relative group"
@@ -275,11 +355,11 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Mobile Navigation Button - 只在登录后显示 */}
+          {/* Mobile Navigation Button */}
           {isLoading ? (
             // 加载中时显示空白占位符
             <div className="md:hidden w-6 h-6"></div>
-          ) : session ? (
+          ) : (
             <button
               className={`md:hidden p-2 rounded-md transition ${
                 isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/90 drop-shadow-md'
@@ -294,20 +374,11 @@ export default function Navbar() {
                 )}
               </svg>
             </button>
-          ) : (
-            <Link
-              to="/auth/login"
-              className={`md:hidden transition font-medium ${
-                isScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white hover:text-white/90 drop-shadow-md'
-              }`}
-            >
-              登录/注册
-            </Link>
           )}
         </div>
 
         {/* Mobile Navigation Menu */}
-        {isMenuOpen && session && (
+        {isMenuOpen && (
           <div className="md:hidden py-4 bg-white" style={navStyle}>
             <div className="flex flex-col space-y-4">
               {(settings?.nav_items || defaultNavItems).map((item) => (
@@ -336,44 +407,60 @@ export default function Navbar() {
                 </div>
               ))}
               
-              {/* Mobile User Menu */}
-              <Link
-                to="/cart"
-                className="flex items-center text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                <ShoppingCart className="w-5 h-5 mr-2" />
-                购物车
-                {cartItemCount > 0 && (
-                  <span className="ml-2 bg-indigo-600 text-white text-xs rounded-full px-2 py-1">
-                    {cartItemCount}
-                  </span>
-                )}
-              </Link>
-              <Link
-                to="/profile"
-                className="flex items-center text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                <User className="w-5 h-5 mr-2" />
-                个人中心
-              </Link>
-              <Link
-                to="/orders"
-                className="block text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                我的订单
-              </Link>
-              <button
-                onClick={async () => {
-                  await handleLogout();
-                  setIsMenuOpen(false);
-                }}
-                className="block w-full text-left text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
-              >
-                退出登录
-              </button>
+              {/* 仅对登录用户显示的项目 */}
+              {session && (
+                <>
+                  <Link
+                    to="/cart"
+                    className="flex items-center text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <ShoppingCart className="w-5 h-5 mr-2" />
+                    购物车
+                    {cartItemCount > 0 && (
+                      <span className="ml-2 bg-indigo-600 text-white text-xs rounded-full px-2 py-1">
+                        {cartItemCount}
+                      </span>
+                    )}
+                  </Link>
+                  <Link
+                    to="/profile"
+                    className="flex items-center text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <User className="w-5 h-5 mr-2" />
+                    个人中心
+                  </Link>
+                  <Link
+                    to="/orders"
+                    className="block text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    我的订单
+                  </Link>
+                  <button
+                    onClick={async () => {
+                      await handleLogout();
+                      setIsMenuOpen(false);
+                    }}
+                    className="block w-full text-left text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
+                  >
+                    退出登录
+                  </button>
+                </>
+              )}
+              
+              {/* 未登录用户显示登录链接 */}
+              {!session && (
+                <Link
+                  to="/auth/login"
+                  className="flex items-center text-gray-700 hover:text-indigo-600 transition px-4 py-2 rounded-md hover:bg-gray-100"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  <User className="w-5 h-5 mr-2" />
+                  登录/注册
+                </Link>
+              )}
             </div>
           </div>
         )}

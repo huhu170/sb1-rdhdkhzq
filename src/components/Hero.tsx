@@ -11,6 +11,20 @@ interface Banner {
   order: number;
 }
 
+const OptimizedImage = ({ src, alt, className }: { src: string; alt: string; className: string }) => {
+  return (
+    <img 
+      src={src} 
+      alt={alt} 
+      className={className} 
+      loading="lazy"
+      decoding="async"
+      width="1920"
+      height="1080"
+    />
+  );
+};
+
 export default function Hero() {
   const [banner, setBanner] = useState<Banner>({
     id: 'default',
@@ -47,7 +61,7 @@ export default function Hero() {
   return (
     <div className="relative h-screen">
       <div className="absolute inset-0">
-        <img
+        <OptimizedImage
           src={banner.image_url}
           alt="专业隐形眼镜定制服务"
           className="w-full h-full object-cover"
