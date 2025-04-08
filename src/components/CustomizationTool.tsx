@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 import { Palette, Droplets, Circle, Eye, Ruler, ShoppingCart } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import Slider from 'rc-slider';
+import 'rc-slider/assets/index.css';
 
 interface Product {
   id: string;
@@ -294,14 +296,20 @@ export default function CustomizationTool({ initialProduct }: CustomizationToolP
             </label>
             <div className="flex-1">
               <div className="relative">
-                <input
-                  type="range"
+                <Slider
                   min={option.min || 0}
                   max={option.max || 100}
                   step={stepValue}
                   value={currentValue}
-                  onChange={(e) => handleCustomizationChange(option.id, parseFloat(e.target.value))}
+                  onChange={(value) => handleCustomizationChange(option.id, value as number)}
                   className="w-full"
+                  trackStyle={{ backgroundColor: '#3b82f6' }}
+                  handleStyle={{
+                    borderColor: '#3b82f6',
+                    backgroundColor: '#ffffff',
+                    boxShadow: '0 0 0 2px #3b82f6',
+                  }}
+                  railStyle={{ backgroundColor: '#e5e7eb' }}
                 />
                 {option.name === '近视度数' && (
                   <div className="flex justify-between text-xs text-gray-500 mt-1">
@@ -375,9 +383,9 @@ export default function CustomizationTool({ initialProduct }: CustomizationToolP
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          {/* Left Column - Main Configuration */}
-          <div className="md:col-span-3">
+        <div className="grid grid-cols-1 md:grid-cols-[61.8%_38.2%] gap-8">
+          {/* 左侧配置区域 - 61.8% */}
+          <div className="md:col-span-1">
             <div className="bg-white p-8 rounded-xl shadow-lg h-full">
               {/* 产品选择 */}
               <div className="mb-8">
@@ -410,41 +418,43 @@ export default function CustomizationTool({ initialProduct }: CustomizationToolP
             </div>
           </div>
 
-          {/* Right Column - Preview and Actions */}
+          {/* 右侧预览区域 - 38.2% */}
           <div className="md:col-span-1">
             <div className="bg-white p-6 rounded-xl shadow-lg h-full flex flex-col">
               {/* 产品预览图 */}
               {selectedProduct && (
-                <div className="relative w-full aspect-square mb-6 rounded-lg overflow-hidden bg-gray-100">
+                <div className="relative w-[160px] h-[120px] mx-auto mb-6 rounded-lg overflow-hidden bg-gray-100">
                   <img
                     src={selectedProduct.image_url}
                     alt={selectedProduct.name}
-                    className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                    className="w-full h-full object-contain transition-transform duration-300 hover:scale-105"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
                 </div>
               )}
 
               {/* 定制参数列表 */}
-              <div className="flex-grow space-y-3">
-                {customizationOptions.map(option => {
-                  const value = customization[option.id];
-                  let displayValue = value;
-                  
-                  if (option.type === 'color' || option.type === 'select') {
-                    const selectedOption = option.options?.find(opt => opt.value === value);
-                    displayValue = selectedOption?.label || value;
-                  }
+              <div className="flex-grow">
+                <div className="grid grid-cols-2 gap-2">
+                  {customizationOptions.map(option => {
+                    const value = customization[option.id];
+                    let displayValue = value;
+                    
+                    if (option.type === 'color' || option.type === 'select') {
+                      const selectedOption = option.options?.find(opt => opt.value === value);
+                      displayValue = selectedOption?.label || value;
+                    }
 
-                  return (
-                    <div key={option.id} className="flex justify-between items-center text-sm py-2 border-b border-gray-100 last:border-0">
-                      <span className="text-gray-600">{option.name}</span>
-                      <span className="font-medium text-gray-900">
-                        {displayValue} {option.unit || ''}
-                      </span>
-                    </div>
-                  );
-                })}
+                    return (
+                      <div key={option.id} className="flex flex-col p-2 bg-gray-50 rounded-lg">
+                        <span className="text-xs text-gray-500">{option.name}</span>
+                        <span className="font-medium text-gray-900 text-sm">
+                          {displayValue} {option.unit || ''}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* 价格和操作按钮 */}
