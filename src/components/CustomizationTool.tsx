@@ -50,7 +50,6 @@ export default function CustomizationTool({ initialProduct }: CustomizationToolP
   const [totalPrice, setTotalPrice] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeGroup, setActiveGroup] = useState<string>('基础参数');
   const [addingToCart, setAddingToCart] = useState(false);
   const { session } = useAuth();
   const navigate = useNavigate();
@@ -111,12 +110,16 @@ export default function CustomizationTool({ initialProduct }: CustomizationToolP
 
       if (data && data.length > 0) {
         setCustomizationOptions(data);
+        // 初始化默认值
         const defaultState: CustomizationState = {};
         data.forEach(option => {
-          if (option.default_value !== undefined) {
-            defaultState[option.id] = option.default_value;
+          if (option.type === 'number') {
+            defaultState[option.id] = Number(option.default_value || option.min || 0);
+          } else {
+            defaultState[option.id] = option.default_value || '';
           }
         });
+        console.log('Setting initial state:', defaultState);
         setCustomization(defaultState);
       }
     } catch (err: any) {
@@ -148,10 +151,38 @@ export default function CustomizationTool({ initialProduct }: CustomizationToolP
   };
 
   const handleCustomizationChange = (optionId: string, value: string | number) => {
+    if (typeof value === 'number') {
+      // 处理近视度数的特殊梯度
+      const option = customizationOptions.find(opt => opt.id === optionId);
+      if (option?.name === '近视度数') {
+        const numValue = parseFloat(value.toString());
+        if (numValue > 500) {
+          // 500-1500区间使用50的梯度
+          const remainder = (numValue - 500) % 50;
+          if (remainder !== 0) {
+            value = remainder < 25 ? numValue - remainder : numValue + (50 - remainder);
+          }
+        } else {
+          // 0-500区间使用25的梯度
+          const remainder = numValue % 25;
+          if (remainder !== 0) {
+            value = remainder < 12.5 ? numValue - remainder : numValue + (25 - remainder);
+          }
+        }
+      }
+    }
     setCustomization(prev => ({
       ...prev,
       [optionId]: value
     }));
+  };
+
+  const getStepValue = (option: CustomizationOption, currentValue: string | number): number => {
+    if (option.name === '近视度数') {
+      const numValue = typeof currentValue === 'string' ? parseFloat(currentValue) : currentValue;
+      return numValue > 500 ? 50 : 25;
+    }
+    return option.step || 1;
   };
 
   const handleProductChange = (productId: string) => {
@@ -230,67 +261,88 @@ export default function CustomizationTool({ initialProduct }: CustomizationToolP
     switch (option.type) {
       case 'color':
         return (
-          <div className="space-y-2">
-            <label className="flex items-center text-gray-700 mb-2">
+          <div className="flex items-center gap-4">
+            <label className="flex items-center text-gray-700 min-w-[120px]">
               <Palette className="w-5 h-5 mr-2" />
               {option.name}
             </label>
-            <select
-              value={customization[option.id] as string}
-              onChange={(e) => handleCustomizationChange(option.id, e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-            >
-              {option.options?.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label} {opt.price_adjustment ? `(+¥${opt.price_adjustment})` : ''}
-                </option>
-              ))}
-            </select>
+            <div className="flex-1">
+              <select
+                value={customization[option.id] as string}
+                onChange={(e) => handleCustomizationChange(option.id, e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                {option.options?.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label} {opt.price_adjustment ? `(+¥${opt.price_adjustment})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         );
 
       case 'number':
+        const currentValue = Number(customization[option.id] ?? (option.min || 0));
+        const stepValue = getStepValue(option, currentValue);
+        
         return (
-          <div className="space-y-2">
-            <label className="flex items-center text-gray-700 mb-2">
+          <div className="flex items-center gap-4">
+            <label className="flex items-center text-gray-700 min-w-[120px]">
               <Circle className="w-5 h-5 mr-2" />
               {option.name}
             </label>
-            <div className="flex items-center space-x-2">
-              <input
-                type="range"
-                min={option.min}
-                max={option.max}
-                step={option.step}
-                value={customization[option.id] as number}
-                onChange={(e) => handleCustomizationChange(option.id, parseFloat(e.target.value))}
-                className="flex-1"
-              />
-              <span className="text-gray-600 min-w-[80px] text-right">
-                {customization[option.id]} {option.unit}
-              </span>
+            <div className="flex-1">
+              <div className="relative">
+                <input
+                  type="range"
+                  min={option.min || 0}
+                  max={option.max || 100}
+                  step={stepValue}
+                  value={currentValue}
+                  onChange={(e) => handleCustomizationChange(option.id, parseFloat(e.target.value))}
+                  className="w-full"
+                />
+                {option.name === '近视度数' && (
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>0度</span>
+                    <span>500度</span>
+                    <span>1000度</span>
+                    <span>1500度</span>
+                  </div>
+                )}
+                {option.name === '散光度数' && (
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>0度</span>
+                    <span>250度</span>
+                    <span>500度</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         );
 
       case 'select':
         return (
-          <div className="space-y-2">
-            <label className="flex items-center text-gray-700 mb-2">
+          <div className="flex items-center gap-4">
+            <label className="flex items-center text-gray-700 min-w-[120px]">
               <Droplets className="w-5 h-5 mr-2" />
               {option.name}
             </label>
-            <select
-              value={customization[option.id] as string}
-              onChange={(e) => handleCustomizationChange(option.id, e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-            >
-              {option.options?.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label} {opt.price_adjustment ? `(+¥${opt.price_adjustment})` : ''}
-                </option>
-              ))}
-            </select>
+            <div className="flex-1">
+              <select
+                value={customization[option.id] as string}
+                onChange={(e) => handleCustomizationChange(option.id, e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                {option.options?.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label} {opt.price_adjustment ? `(+¥${opt.price_adjustment})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         );
 
@@ -306,8 +358,6 @@ export default function CustomizationTool({ initialProduct }: CustomizationToolP
       </div>
     );
   }
-
-  const groups = Array.from(new Set(customizationOptions.map(opt => opt.group)));
 
   return (
     <div className="bg-gray-50 py-24" id="customize">
@@ -325,72 +375,31 @@ export default function CustomizationTool({ initialProduct }: CustomizationToolP
           </div>
         )}
 
-        <div className="grid grid-cols-4 gap-8">
-          {/* Left Column - Main Configuration (3/4 width) */}
-          <div className="col-span-3">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+          {/* Left Column - Main Configuration */}
+          <div className="md:col-span-3">
             <div className="bg-white p-8 rounded-xl shadow-lg h-full">
               {/* 产品选择 */}
-              <div className="grid grid-cols-[2fr,1fr] gap-6 mb-8">
-                <div className="space-y-4">
-                  <label className="flex items-center text-gray-700 mb-2">
-                    <Eye className="w-5 h-5 mr-2" />
-                    选择产品系列
-                  </label>
-                  <select
-                    value={selectedProduct?.id}
-                    onChange={(e) => handleProductChange(e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-                  >
-                    {products.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.name} - ¥{product.base_price}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedProduct && (
-                    <p className="text-sm text-gray-600">{selectedProduct.description}</p>
-                  )}
-                </div>
-                {/* Product Image Preview */}
-                <div className="h-[120px]">
-                  {selectedProduct && (
-                    <div className="relative h-full w-full rounded-lg overflow-hidden bg-gray-100">
-                      <img
-                        src={selectedProduct.image_url}
-                        alt={selectedProduct.name}
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* 参数组导航 */}
-              <div className="border-b border-gray-200 mb-8">
-                <nav className="-mb-px flex space-x-8">
-                  {groups.map((group) => (
-                    <button
-                      key={group}
-                      onClick={() => setActiveGroup(group)}
-                      className={`
-                        whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm
-                        ${activeGroup === group
-                          ? 'border-indigo-500 text-indigo-600'
-                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        }
-                      `}
-                    >
-                      {group}
-                    </button>
+              <div className="mb-8">
+                <select
+                  value={selectedProduct?.id}
+                  onChange={(e) => handleProductChange(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name} - ¥{product.base_price}
+                    </option>
                   ))}
-                </nav>
+                </select>
+                {selectedProduct && (
+                  <p className="text-sm text-gray-600 mt-2">{selectedProduct.description}</p>
+                )}
               </div>
 
-              {/* 分组显示定制选项 */}
-              <div className="space-y-6">
+              {/* 所有定制选项 */}
+              <div className="space-y-4">
                 {customizationOptions
-                  .filter(opt => opt.group === activeGroup)
                   .sort((a, b) => a.order - b.order)
                   .map(option => (
                     <div key={option.id}>
@@ -401,39 +410,45 @@ export default function CustomizationTool({ initialProduct }: CustomizationToolP
             </div>
           </div>
 
-          {/* Right Column - Preview and Actions (1/4 width) */}
-          <div className="col-span-1">
+          {/* Right Column - Preview and Actions */}
+          <div className="md:col-span-1">
             <div className="bg-white p-6 rounded-xl shadow-lg h-full flex flex-col">
-              {/* 定制参数总览 */}
-              <div className="flex-grow">
-                <h3 className="text-lg font-medium text-gray-900 mb-6 flex items-center">
-                  <Ruler className="w-5 h-5 mr-2" />
-                  定制参数总览
-                </h3>
-                <div className="space-y-4">
-                  {customizationOptions.map(option => {
-                    const value = customization[option.id];
-                    let displayValue = value;
-                    
-                    if (option.type === 'color' || option.type === 'select') {
-                      const selectedOption = option.options?.find(opt => opt.value === value);
-                      displayValue = selectedOption?.label || value;
-                    }
-
-                    return (
-                      <div key={option.id} className="flex justify-between text-sm border-b border-gray-100 pb-2">
-                        <span className="text-gray-600">{option.name}</span>
-                        <span className="font-medium text-gray-900">
-                          {displayValue} {option.unit || ''}
-                        </span>
-                      </div>
-                    );
-                  })}
+              {/* 产品预览图 */}
+              {selectedProduct && (
+                <div className="relative w-full aspect-square mb-6 rounded-lg overflow-hidden bg-gray-100">
+                  <img
+                    src={selectedProduct.image_url}
+                    alt={selectedProduct.name}
+                    className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
                 </div>
+              )}
+
+              {/* 定制参数列表 */}
+              <div className="flex-grow space-y-3">
+                {customizationOptions.map(option => {
+                  const value = customization[option.id];
+                  let displayValue = value;
+                  
+                  if (option.type === 'color' || option.type === 'select') {
+                    const selectedOption = option.options?.find(opt => opt.value === value);
+                    displayValue = selectedOption?.label || value;
+                  }
+
+                  return (
+                    <div key={option.id} className="flex justify-between items-center text-sm py-2 border-b border-gray-100 last:border-0">
+                      <span className="text-gray-600">{option.name}</span>
+                      <span className="font-medium text-gray-900">
+                        {displayValue} {option.unit || ''}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* 价格和操作按钮 */}
-              <div className="mt-8 pt-6 border-t border-gray-200">
+              <div className="mt-6 pt-6 border-t border-gray-200">
                 <div className="flex justify-between items-center mb-4">
                   <span className="text-lg font-medium">总价</span>
                   <span className="text-2xl font-bold text-indigo-600">¥{totalPrice}</span>
