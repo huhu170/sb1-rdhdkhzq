@@ -28,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userRoles, setUserRoles] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // 刷新会话方法
   const refreshSession = async () => {
@@ -61,7 +62,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkAndUpdateSuperAdmin = (currentUser: User | null) => {
     const isSuperAdminUser = currentUser?.email === SUPERADMIN_EMAIL;
     console.log(`超级管理员检查: ${currentUser?.email} === ${SUPERADMIN_EMAIL} = ${isSuperAdminUser}`);
+    
     setIsSuperAdmin(isSuperAdminUser);
+    
+    // 如果是超级管理员，同时也设置为普通管理员
+    if (isSuperAdminUser) {
+      setIsAdmin(true);
+    }
+    
     return isSuperAdminUser;
   };
 
@@ -173,6 +181,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('AuthContext: 认证状态变化:', _event, session ? '有会话' : '无会话');
       setSession(session);
       setUser(session?.user || null);
+      setIsAuthenticated(!!session?.user);
+      
+      // 无会话时重置所有状态
+      if (!session) {
+        setUserRoles([]);
+        setIsAdmin(false);
+        setIsSuperAdmin(false);
+        localStorage.removeItem('sijoer-auth-session');
+        localStorage.removeItem('sijoer-user-roles');
+        return;
+      }
       
       // 立即检查超级管理员状态
       checkAndUpdateSuperAdmin(session?.user || null);
@@ -205,7 +224,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (cachedRoles) {
         const roles = JSON.parse(cachedRoles);
         setUserRoles(roles);
-        setIsAdmin(roles.includes('admin'));
+        // 如果是管理员角色，设置isAdmin为true
+        const hasAdminRole = roles.includes('admin');
+        setIsAdmin(hasAdminRole);
+        console.log('从缓存读取角色:', roles, '是否管理员:', hasAdminRole);
       }
       
       // 然后从服务器获取最新角色
@@ -219,27 +241,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const roles = data?.map(item => item.role_name) || [];
+      const hasAdminRole = roles.includes('admin');
+      
       setUserRoles(roles);
-      setIsAdmin(roles.includes('admin'));
-      console.log('角色检查:', roles, '用户邮箱:', user?.email);
+      setIsAdmin(hasAdminRole || user?.email === SUPERADMIN_EMAIL);
+      
+      console.log('角色检查:', roles, '用户邮箱:', user?.email, '是否管理员:', hasAdminRole || user?.email === SUPERADMIN_EMAIL);
       
       // 缓存角色信息到本地存储
       localStorage.setItem('sijoer-user-roles', JSON.stringify(roles));
       
-      // 超级管理员判断移到了checkAndUpdateSuperAdmin函数
-      // 但是在此处仍然检查一次以防万一
+      // 超级管理员判断
       if (user?.email === SUPERADMIN_EMAIL) {
-        console.log('在fetchUserRoles中设置为超级管理员');
+        console.log('超级管理员账号');
         setIsSuperAdmin(true);
+        setIsAdmin(true);
       }
-    } catch (error) {
-      console.error('Error fetching user roles:', error);
-      // 如果出错，保留之前的角色状态，不要重置
       
-      // 即使出错，也要确保超级管理员状态正确
+      return roles;
+    } catch (error) {
+      console.error('获取用户角色失败:', error);
+      
+      // 如果出错，检查是否超级管理员
       if (user?.email === SUPERADMIN_EMAIL) {
         setIsSuperAdmin(true);
+        setIsAdmin(true);
       }
+      
+      return userRoles;
     }
   }
 

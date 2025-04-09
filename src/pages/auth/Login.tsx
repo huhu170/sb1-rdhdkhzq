@@ -16,7 +16,7 @@ export default function Login() {
   const [redirecting, setRedirecting] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading: authLoading, isAdmin } = useAuth();
 
   // Handle automatic redirects based on authentication state
   useEffect(() => {
@@ -24,27 +24,31 @@ export default function Login() {
     if (isAuthenticated && !authLoading && !redirecting) {
       // 防止重复重定向
       setRedirecting(true);
+      console.log('用户已登录，准备重定向');
       
-      // 使用location.state获取原始请求的页面路径
-      const state = location.state as { from?: string };
+      // 确定登录页面类型
       const isAdminLogin = location.pathname === '/admin/login';
+      
+      console.log('用户是否管理员:', isAdmin);
 
-      if (isAdminLogin) {
-        // 管理员登录页处理
-        verifyAdminRole();
-      } else {
-        // 普通用户登录处理
-        const redirectTo = state?.from || '/';
-        console.log('Redirecting authenticated user to:', redirectTo);
-        
-        // 使用replace而不是push避免历史记录堆积
-        // 添加一个简短的延迟，确保DOM完全更新
-        setTimeout(() => {
-          navigate(redirectTo, { replace: true });
-        }, 10);
-      }
+      // 使用setTimeout确保重定向在下一个事件循环中执行
+      setTimeout(() => {
+        if (isAdminLogin) {
+          if (isAdmin) {
+            console.log('管理员从管理员登录页登录，重定向到管理后台');
+            navigate('/admin/dashboard', { replace: true });
+          } else {
+            console.log('非管理员用户从管理员登录页登录，重定向到首页');
+            navigate('/', { replace: true });
+          }
+        } else {
+          // 从普通登录页登录，普通用户直接到首页
+          console.log('从普通登录页登录，重定向到首页');
+          navigate('/', { replace: true });
+        }
+      }, 300); // 延长延迟时间，确保状态更新
     }
-  }, [isAuthenticated, authLoading, redirecting, location.pathname, navigate, location.state]);
+  }, [isAuthenticated, authLoading, redirecting, navigate, location.pathname, isAdmin]);
 
   // Handle messages and errors from navigation state
   useEffect(() => {

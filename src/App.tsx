@@ -210,82 +210,29 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 // 添加前台路由保护组件，阻止管理员访问前台
 const FrontendRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, loading, user } = useAuth();
+  const { session, loading, isAdmin } = useAuth();
   const navigate = useNavigate();
-  const [isCheckingAccountType, setIsCheckingAccountType] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
-
+  const [isCheckingRole, setIsCheckingRole] = useState(false);
+  
+  // 只需检查AuthContext中的isAdmin状态
   useEffect(() => {
-    const checkAccountType = async () => {
-      // 如果用户未登录，就不需要检查账号类型
-      if (!session?.user) {
-        setIsCheckingAccountType(false);
-        return;
-      }
-
-      // 尝试从缓存中读取账号类型
-      const cachedAccountType = localStorage.getItem('sijoer-account-type');
-      if (cachedAccountType) {
-        try {
-          const isAdminAccount = cachedAccountType === 'admin';
-          setIsAdmin(isAdminAccount);
-          
-          if (isAdminAccount) {
-            console.log('管理员账号不能访问前台，将重定向到管理后台');
-            navigate('/admin/dashboard', { replace: true });
-          }
-          
-          setIsCheckingAccountType(false);
-          return;
-        } catch (e) {
-          console.error('解析缓存账号类型出错:', e);
-        }
-      }
-
-      try {
-        // 查询用户类型
-        const { data, error } = await supabase
-          .from('user_profiles')
-          .select('account_type')
-          .eq('id', session.user.id)
-          .maybeSingle();  // 使用maybeSingle代替single
-
-        if (error) {
-          console.error('获取用户账号类型失败:', error);
-          setIsCheckingAccountType(false);
-          setIsAdmin(false); // 错误情况下默认不是管理员
-          return;
-        }
-
-        // 缓存账号类型
-        if (data?.account_type) {
-          localStorage.setItem('sijoer-account-type', data.account_type);
-        }
-
-        // 如果是管理员账号,重定向到管理后台
-        if (data?.account_type === 'admin') {
-          console.log('管理员账号不能访问前台，将重定向到管理后台');
-          setIsAdmin(true);
-          navigate('/admin/dashboard', { replace: true });
-        } else {
-          setIsAdmin(false);
-        }
-      } catch (err) {
-        console.error('检查账号类型出错:', err);
-        setIsAdmin(false); // 错误情况下默认不是管理员
-      } finally {
-        setIsCheckingAccountType(false);
-      }
-    };
-
     if (!loading && session) {
-      checkAccountType();
+      setIsCheckingRole(true);
+      
+      // 使用setTimeout避免立即重定向导致的页面闪烁
+      setTimeout(() => {
+        if (isAdmin) {
+          console.log('管理员账号不能访问前台，重定向到管理后台');
+          navigate('/admin/dashboard', { replace: true });
+        }
+        setIsCheckingRole(false);
+      }, 100);
     } else {
-      setIsCheckingAccountType(false);
+      setIsCheckingRole(false);
     }
-  }, [session, loading, navigate]);
+  }, [session, loading, isAdmin, navigate]);
 
-  if (loading || isCheckingAccountType) {
+  if (loading || isCheckingRole) {
     return <LoadingFallback />;
   }
 
