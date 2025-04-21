@@ -260,6 +260,116 @@ export default function CustomizationTool({ initialProduct }: CustomizationToolP
   };
 
   const renderCustomizationOption = (option: CustomizationOption) => {
+    // 为直径选项添加特殊处理
+    if (option.name === '直径') {
+      const diameterOptions = [
+        { value: '13.8', label: '13.8mm' },
+        { value: '14.0', label: '14.0mm' },
+        { value: '14.2', label: '14.2mm' },
+        { value: '14.4', label: '14.4mm' }
+      ];
+      
+      return (
+        <div className="flex items-center gap-4">
+          <label className="flex items-center text-gray-700 min-w-[120px]">
+            <Ruler className="w-5 h-5 mr-2" />
+            {option.name}
+          </label>
+          <div className="flex-1">
+            <div className="flex flex-wrap gap-2">
+              {diameterOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => handleCustomizationChange(option.id, opt.value)}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors 
+                    ${customization[option.id] === opt.value 
+                      ? 'bg-indigo-600 text-white' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    // 为含水量选项添加特殊处理
+    if (option.name === '含水量') {
+      const waterContentOptions = [
+        { value: '38', label: '38%' },
+        { value: '42', label: '42%' },
+        { value: '44', label: '44%' },
+        { value: '46', label: '46%' },
+        { value: '48', label: '48%' }
+      ];
+      
+      return (
+        <div className="flex items-center gap-4">
+          <label className="flex items-center text-gray-700 min-w-[120px]">
+            <Droplets className="w-5 h-5 mr-2" />
+            {option.name}
+          </label>
+          <div className="flex-1">
+            <div className="flex flex-wrap gap-2">
+              {waterContentOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => handleCustomizationChange(option.id, opt.value)}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors 
+                    ${customization[option.id] === opt.value 
+                      ? 'bg-indigo-600 text-white' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 为基弧选项添加特殊处理
+    if (option.name === '基弧') {
+      const baseOptions = [
+        { value: '8.4', label: '8.4mm' },
+        { value: '8.5', label: '8.5mm' },
+        { value: '8.6', label: '8.6mm' },
+        { value: '8.7', label: '8.7mm' },
+        { value: '8.8', label: '8.8mm' }
+      ];
+      
+      return (
+        <div className="flex items-center gap-4">
+          <label className="flex items-center text-gray-700 min-w-[120px]">
+            <Circle className="w-5 h-5 mr-2" />
+            {option.name}
+          </label>
+          <div className="flex-1">
+            <div className="flex flex-wrap gap-2">
+              {baseOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => handleCustomizationChange(option.id, opt.value)}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors 
+                    ${customization[option.id] === opt.value 
+                      ? 'bg-indigo-600 text-white' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
     switch (option.type) {
       case 'color':
         return (
@@ -313,17 +423,31 @@ export default function CustomizationTool({ initialProduct }: CustomizationToolP
                 />
                 {option.name === '近视度数' && (
                   <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>0度</span>
-                    <span>500度</span>
-                    <span>1000度</span>
-                    <span>1500度</span>
+                    <span>0</span>
+                    <span>500</span>
+                    <span>1000</span>
+                    <span>1500</span>
                   </div>
                 )}
                 {option.name === '散光度数' && (
                   <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>0度</span>
-                    <span>250度</span>
-                    <span>500度</span>
+                    <span>0</span>
+                    <span>250</span>
+                    <span>500</span>
+                  </div>
+                )}
+                {option.name === '远视度数' && (
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>0</span>
+                    <span>300</span>
+                    <span>600</span>
+                  </div>
+                )}
+                {option.name === '散光轴位' && (
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>0</span>
+                    <span>90</span>
+                    <span>180</span>
                   </div>
                 )}
               </div>
@@ -445,11 +569,19 @@ export default function CustomizationTool({ initialProduct }: CustomizationToolP
                       displayValue = selectedOption?.label || value;
                     }
 
+                    // 处理单位显示
+                    let unitDisplay = option.unit || '';
+                    
+                    // 移除度数单位
+                    if (option.name.includes('度数') || option.name === '散光轴位') {
+                      unitDisplay = '';
+                    }
+
                     return (
                       <div key={option.id} className="flex flex-col p-2 bg-gray-50 rounded-lg">
                         <span className="text-xs text-gray-500">{option.name}</span>
                         <span className="font-medium text-gray-900 text-sm">
-                          {displayValue} {option.unit || ''}
+                          {displayValue} {unitDisplay}
                         </span>
                       </div>
                     );
