@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# 环境变量文件
+.env
+.env.local
+.env.*.local
+
+# 操作系统文件
+Thumbs.db
+
+# Supabase
+**/supabase/.temp
